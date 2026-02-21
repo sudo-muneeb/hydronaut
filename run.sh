@@ -14,6 +14,7 @@ g++ \
   "$SRC/main.cpp"             \
   "$SRC/AssetManager.cpp"     \
   "$SRC/Player.cpp"           \
+  "$SRC/Particle.cpp"         \
   "$SRC/ConvexObstacle.cpp"   \
   "$SRC/SineObstacle.cpp"     \
   "$SRC/ParabolicObstacle.cpp"\

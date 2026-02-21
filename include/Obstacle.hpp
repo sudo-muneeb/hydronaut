@@ -2,20 +2,23 @@
 #include <SFML/Graphics.hpp>
 
 // ─── Abstract Obstacle base ──────────────────────────────────────────────────
-// All obstacle types implement update() and draw() with respect to the
-// live window dimensions so they stay proportionally placed on any resolution.
+// All obstacle types implement update() and draw() with respect to
+// the live window dimensions. Speed can be scaled by setSpeedMultiplier()
+// (used by the Sonar Pulse to slow obstacles within its radius).
 class Obstacle {
 public:
     virtual ~Obstacle() = default;
 
-    // Called once per frame. windowSize drives all position math.
-    virtual void update(sf::Vector2u windowSize) = 0;
+    virtual void update(sf::Vector2u windowSize) noexcept = 0;
+    virtual void draw(sf::RenderWindow& window)  const noexcept = 0;
+    virtual sf::FloatRect getBounds()            const noexcept = 0;
+    virtual void reset(sf::Vector2u windowSize)  = 0;
 
-    virtual void draw(sf::RenderWindow& window) const = 0;
+    // ─── Sonar slow: sets a [0..1] multiplier applied to movement speed.
+    void setSpeedMultiplier(float m) noexcept {
+        m_speedMult = (m < 0.f) ? 0.f : (m > 1.f ? 1.f : m);
+    }
 
-    // Axis-aligned bounding box for collision detection.
-    virtual sf::FloatRect getBounds() const = 0;
-
-    // Reset obstacle to its initial off-screen position.
-    virtual void reset(sf::Vector2u windowSize) = 0;
+protected:
+    float m_speedMult = 1.0f;
 };

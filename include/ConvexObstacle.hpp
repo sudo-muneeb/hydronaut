@@ -29,6 +29,7 @@ class ConvexObstaclePool {
 public:
     void update(sf::Vector2u windowSize, float speed);
     void draw(sf::RenderWindow& window)               const;
+    void drawDebugBounds(sf::RenderWindow& window)    const;
     bool collidesWithPlayer(sf::FloatRect playerBounds) const noexcept;
 
 private:

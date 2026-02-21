@@ -40,7 +40,7 @@ float ParabolicObstacle::parabolicY(float x, sf::Vector2u win) const noexcept {
 
 void ParabolicObstacle::update(sf::Vector2u windowSize) noexcept {
     if (windowSize.x == 0) return;
-    float speed = 4.f;
+    float speed = 4.f * m_speedMult;
     if (m_movingLeft) {
         m_x -= speed;
         if (m_x < 0) m_movingLeft = false;

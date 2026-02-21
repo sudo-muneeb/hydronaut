@@ -36,8 +36,8 @@ void ConvexObstacle::reset(sf::Vector2u windowSize) {
 void ConvexObstacle::setSpeed(float speed) noexcept { m_speed = speed; }
 
 void ConvexObstacle::update(sf::Vector2u /*windowSize*/) noexcept {
-    m_x -= m_speed;
-    m_rotation += 2.0f;
+    m_x -= m_speed * m_speedMult;
+    m_rotation += 2.0f * m_speedMult;
     m_shape.setPosition(m_x, m_y);
     m_shape.setRotation(m_rotation);
 }
@@ -78,6 +78,18 @@ void ConvexObstaclePool::update(sf::Vector2u windowSize, float speed) {
 void ConvexObstaclePool::draw(sf::RenderWindow& window) const {
     for (const auto& obs : m_obstacles)
         obs.draw(window);
+}
+
+void ConvexObstaclePool::drawDebugBounds(sf::RenderWindow& window) const {
+    for (const auto& obs : m_obstacles) {
+        sf::FloatRect b = obs.getBounds();
+        sf::RectangleShape r({b.width, b.height});
+        r.setPosition({b.left, b.top});
+        r.setFillColor(sf::Color::Transparent);
+        r.setOutlineColor(sf::Color(255, 60, 60, 200));
+        r.setOutlineThickness(2.f);
+        window.draw(r);
+    }
 }
 
 bool ConvexObstaclePool::collidesWithPlayer(sf::FloatRect playerBounds) const noexcept {

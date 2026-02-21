@@ -1,23 +1,43 @@
 #pragma once
 #include <SFML/Graphics.hpp>
+#include "Particle.hpp"
 
-// ─── Player ───────────────────────────────────────────────────────────────────
-// Handles the submarine sprite, keyboard input, and window-relative clamping.
+// ─── Player submarine ─────────────────────────────────────────────────────────
+// Velocity-based physics with water drag, Hydro-Dash (Space), and
+// a graze hitbox that is larger than the lethal core hitbox.
 class Player {
 public:
     explicit Player(sf::Vector2u windowSize);
 
-    // Process keyboard state and move; clamps to window bounds.
-    void handleInput(sf::Vector2u windowSize);
+    // Process keyboard, apply physics, emit wake particles.
+    // Returns true if the player just activated a dash this frame.
+    bool handleInput(sf::Vector2u windowSize);
 
-    void draw(sf::RenderWindow& window) const;
+    void update(float dt) noexcept;      // apply drag + move
+    void draw(sf::RenderWindow& window);  // draw particles then sprite
 
-    sf::FloatRect getBounds() const;
-    sf::Vector2f  getPosition() const;
+    // ─── Hitboxes ──────────────────────────────────────────────────────────
+    sf::FloatRect getBounds()      const noexcept;  // lethal core
+    sf::FloatRect getGrazeBounds() const noexcept;  // larger graze zone
 
-    // Reset to starting position (left-centre of window).
+    // ─── Dash state ────────────────────────────────────────────────────────
+    bool  isDashing()     const noexcept { return m_dashFrames > 0; }
+    bool  dashAvailable() const noexcept;
+    float dashCooldownRemaining() const noexcept;
+
     void reset(sf::Vector2u windowSize);
 
+    // ─── Debug ─────────────────────────────────────────────────────────────
+    // Draw lethal (red) and graze (yellow) hitbox outlines.
+    void drawDebugHitboxes(sf::RenderWindow& window) const;
+
 private:
-    sf::Sprite m_sprite;
+    void spawnDashTrail(int count);
+
+    sf::Sprite       m_sprite;
+    sf::Vector2f     m_vel;
+    int              m_dashFrames  = 0;   // iframes remaining
+    sf::Clock        m_dashClock;         // time since last dash fired
+    bool             m_dashFired   = false; // was dash used at least once?
+    ParticleEmitter  m_particles;
 };

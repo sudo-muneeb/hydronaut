@@ -37,7 +37,7 @@ float SecObstacle::secY(float x, sf::Vector2u win) const noexcept {
 
 void SecObstacle::update(sf::Vector2u windowSize) noexcept {
     if (windowSize.x == 0) return;
-    m_x -= 1.f;
+    m_x -= 1.f * m_speedMult;
     if (m_x < 0) {
         float rangeX = windowSize.x * 0.5f;
         m_x = windowSize.x * 0.5f +

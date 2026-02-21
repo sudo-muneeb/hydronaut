@@ -3,48 +3,81 @@
 #include <string>
 
 // ─── Abstract Level base ──────────────────────────────────────────────────────
-// Subclasses implement their own update/draw/isOver logic.
-// The base provides: a shared game loop, score HUD, pause, game-over screen,
-// and a blue gradient background drawn from the window size.
+// Provides the shared game loop, HUD, blue gradient background, pause/resume,
+// screen shake, sonar pulse (X key), graze HUD, hit-stop, and debug overlay.
+//
+// Derived classes implement:
+//   bool update()  — move obstacles, check collision, return true = player dead
+//   void draw()    — draw enemies, player, treasure
 class Level {
 public:
     explicit Level(sf::RenderWindow& window);
     virtual ~Level() = default;
 
-    // Runs the full game loop until game-over; returns final score.
+    // Runs until game-over or Escape. Returns final score.
     int run();
 
 protected:
-    // Called each frame — move obstacles, detect collision, etc.
-    // Returns true if the level is over (player died / time up).
-    virtual bool update() = 0;
+    // ─── Required overrides ────────────────────────────────────────────────
+    virtual bool update() = 0;    // returns true → player dies → hit-stop
+    virtual void draw()   = 0;    // draw level-specific objects
 
-    // Draw level-specific objects (obstacles, treasure, …).
-    virtual void draw() = 0;
-
-    // Draw the deep-blue gradient background.
+    // ─── Shared helpers for subclasses ────────────────────────────────────
     void drawBackground();
-
-    // Draw score HUD text.
     void drawHUD();
+    void addScore(int amount = 1) noexcept;
+    int  getScore()               const noexcept { return m_score; }
 
-    // Draw game-over overlay, wait, then return.
-    void showGameOver();
+    // Screen shake — trigger this when the player dashes or hits something.
+    void triggerShake(int frames, float intensity) noexcept;
 
-    // Increment internal score counter.
-    void addScore(int amount = 1);
+    // Sonar — returns the current obstacle speed multiplier (1.0 or SONAR_SLOW_FACTOR).
+    float getSonarFactor() const noexcept;
 
-    int getScore() const { return m_score; }
+    // Graze — call from update(). Returns 1 if graze, 0 otherwise.
+    // Does NOT fire if playerCore intersects obstacleBox (that's a lethal hit).
+    int checkGraze(sf::FloatRect playerGraze,
+                   sf::FloatRect playerCore,
+                   sf::FloatRect obstacleBox) const noexcept;
+
+    // Debug mode flag (toggled by F3 key).
+    bool m_debugMode = false;
 
     sf::RenderWindow& m_window;
-    bool              m_paused     = false;
-    bool              m_gameOver   = false;
+    bool              m_paused   = false;
+    bool              m_gameOver = false;
 
 private:
-    void handlePauseKey(sf::Event& event);
+    void handleEvents();
+    void applyShake();
+    void restoreView();
+    void drawSonarRing();
+    void drawGrazeHUD();
+    void drawDebugOverlay();
+    void showGameOver();
+    void showPauseOverlay();
 
-    sf::Text    m_scoreText;
-    sf::Text    m_pauseText;
-    int         m_score      = 0;
-    bool        m_pKeyDown   = false;
+    // ─── Score / HUD ──────────────────────────────────────────────────────
+    int      m_score    = 0;
+    int      m_grazeAcc = 0;   // graze points accumulated this run
+    sf::Text m_scoreText;
+    sf::Text m_pauseText;
+    sf::Text m_grazeText;
+
+    // ─── Pause ────────────────────────────────────────────────────────────
+    bool m_pKeyDown  = false;
+
+    // ─── Screen shake ─────────────────────────────────────────────────────
+    int   m_shakeFrames    = 0;
+    float m_shakeIntensity = 0.f;
+    sf::View m_baseView;
+
+    // ─── Sonar pulse ──────────────────────────────────────────────────────
+    bool         m_sonarActive   = false;
+    float        m_sonarRadius   = 0.f;
+    sf::Vector2f m_sonarCenter;
+    sf::Clock    m_sonarClock;
+    bool         m_sonarFired    = false;
+    sf::Clock    m_sonarCooldownClock;
+    bool         m_xKeyDown      = false;
 };

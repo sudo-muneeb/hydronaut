@@ -14,6 +14,7 @@ public:
 private:
     void updateHighlight();
     void drawBackground();
+    void layout();              // position items from current view size
 
     sf::RenderWindow& m_window;
     sf::Font&         m_font;   // Reference from AssetManager

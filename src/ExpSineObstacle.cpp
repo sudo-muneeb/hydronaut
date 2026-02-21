@@ -32,7 +32,7 @@ float ExpSineObstacle::expSineY(float x, sf::Vector2u win) const noexcept {
 
 void ExpSineObstacle::update(sf::Vector2u windowSize) noexcept {
     if (windowSize.x == 0) return;
-    m_x -= 3.f;
+    m_x -= 3.f * m_speedMult;
     if (m_x < 0) {
         float rangeX = windowSize.x * 0.5f;
         m_x = windowSize.x * 0.5f +

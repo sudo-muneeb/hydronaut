@@ -9,13 +9,13 @@ class ConvexObstacle : public Obstacle {
 public:
     explicit ConvexObstacle(sf::Vector2u windowSize);
 
-    void update(sf::Vector2u windowSize) override;
-    void draw(sf::RenderWindow& window) const override;
-    sf::FloatRect getBounds() const override;
-    void reset(sf::Vector2u windowSize) override;
+    void          update(sf::Vector2u windowSize) noexcept override;
+    void          draw(sf::RenderWindow& window)  const noexcept override;
+    sf::FloatRect getBounds()                     const noexcept override;
+    void          reset(sf::Vector2u windowSize)  override;   // may throw on zero size
 
     // Increase speed (called by Level1 as score climbs).
-    void setSpeed(float speed);
+    void setSpeed(float speed) noexcept;
 
 private:
     sf::ConvexShape m_shape;
@@ -28,9 +28,8 @@ private:
 class ConvexObstaclePool {
 public:
     void update(sf::Vector2u windowSize, float speed);
-    void draw(sf::RenderWindow& window) const;
-    bool collidesWithPlayer(sf::FloatRect playerBounds) const;
-    void setSpeed(float speed);
+    void draw(sf::RenderWindow& window)               const;
+    bool collidesWithPlayer(sf::FloatRect playerBounds) const noexcept;
 
 private:
     void spawnOne(sf::Vector2u windowSize);

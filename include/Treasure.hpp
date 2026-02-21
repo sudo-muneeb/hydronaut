@@ -11,9 +11,8 @@ public:
     // Teleport to a new random position inside the window.
     void respawn(sf::Vector2u windowSize);
 
-    void draw(sf::RenderWindow& window) const;
-
-    sf::FloatRect getBounds() const;
+    void          draw(sf::RenderWindow& window) const noexcept;
+    sf::FloatRect getBounds()                   const noexcept;
 
 private:
     sf::Sprite m_sprite;

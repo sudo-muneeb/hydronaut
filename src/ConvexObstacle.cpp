@@ -1,6 +1,8 @@
 #include "ConvexObstacle.hpp"
 #include <cstdlib>
 #include <cmath>
+#include <algorithm>
+#include <stdexcept>
 
 // Scale obstacle relative to window: roughly 2% of smaller dimension
 static constexpr float OBS_SIZE_FACTOR = 0.02f;
@@ -12,6 +14,10 @@ ConvexObstacle::ConvexObstacle(sf::Vector2u windowSize)
 }
 
 void ConvexObstacle::reset(sf::Vector2u windowSize) {
+    // Guard against degenerate window sizes
+    if (windowSize.x == 0 || windowSize.y == 0)
+        throw std::invalid_argument("ConvexObstacle: window size must be non-zero");
+
     float size = std::min(windowSize.x, windowSize.y) * OBS_SIZE_FACTOR * 5.f;
 
     m_shape.setPointCount(3);
@@ -27,26 +33,31 @@ void ConvexObstacle::reset(sf::Vector2u windowSize) {
     m_shape.setPosition(m_x, m_y);
 }
 
-void ConvexObstacle::setSpeed(float speed) { m_speed = speed; }
+void ConvexObstacle::setSpeed(float speed) noexcept { m_speed = speed; }
 
-void ConvexObstacle::update(sf::Vector2u /*windowSize*/) {
+void ConvexObstacle::update(sf::Vector2u /*windowSize*/) noexcept {
     m_x -= m_speed;
     m_rotation += 2.0f;
     m_shape.setPosition(m_x, m_y);
     m_shape.setRotation(m_rotation);
 }
 
-void ConvexObstacle::draw(sf::RenderWindow& window) const {
+void ConvexObstacle::draw(sf::RenderWindow& window) const noexcept {
     window.draw(m_shape);
 }
 
-sf::FloatRect ConvexObstacle::getBounds() const {
+sf::FloatRect ConvexObstacle::getBounds() const noexcept {
     return m_shape.getGlobalBounds();
 }
 
 // ─── Pool ─────────────────────────────────────────────────────────────────────
 void ConvexObstaclePool::update(sf::Vector2u windowSize, float speed) {
     m_speed = speed;
+
+    // Reserve capacity upfront so push_back never reallocates mid-frame.
+    // 30 obstacles is safely beyond any in-game maximum.
+    if (m_obstacles.capacity() < 30)
+        m_obstacles.reserve(30);
 
     // Random spawning (approx 1-in-50 chance per frame)
     if (std::rand() % 50 == 0)
@@ -69,7 +80,7 @@ void ConvexObstaclePool::draw(sf::RenderWindow& window) const {
         obs.draw(window);
 }
 
-bool ConvexObstaclePool::collidesWithPlayer(sf::FloatRect playerBounds) const {
+bool ConvexObstaclePool::collidesWithPlayer(sf::FloatRect playerBounds) const noexcept {
     for (const auto& obs : m_obstacles)
         if (playerBounds.intersects(obs.getBounds()))
             return true;
@@ -79,5 +90,5 @@ bool ConvexObstaclePool::collidesWithPlayer(sf::FloatRect playerBounds) const {
 void ConvexObstaclePool::spawnOne(sf::Vector2u windowSize) {
     ConvexObstacle obs(windowSize);
     obs.setSpeed(m_speed);
-    m_obstacles.push_back(std::move(obs));
+    m_obstacles.emplace_back(std::move(obs));
 }

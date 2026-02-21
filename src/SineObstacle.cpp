@@ -12,17 +12,18 @@ SineObstacle::SineObstacle(sf::Vector2u windowSize, const std::string& textureNa
 }
 
 void SineObstacle::reset(sf::Vector2u windowSize) {
+    if (windowSize.x == 0 || windowSize.y == 0) return;
     float h    = windowSize.y * SCALE_FACTOR;
     float s    = h / static_cast<float>(m_sprite.getTextureRect().height > 0
                      ? m_sprite.getTextureRect().height : 1);
     m_sprite.setScale(s, s);
-    // Start off to the right at a random x in [60%, 100%] of width
+    float rangeX = windowSize.x * 0.4f;
     m_x = windowSize.x * 0.6f +
-          static_cast<float>(std::rand() % static_cast<int>(windowSize.x * 0.4f + 1));
+          (rangeX > 0 ? static_cast<float>(std::rand() % static_cast<int>(rangeX)) : 0.f);
     m_sprite.setPosition(m_x, sineY(m_x, windowSize));
 }
 
-float SineObstacle::sineY(float x, sf::Vector2u win) const {
+float SineObstacle::sineY(float x, sf::Vector2u win) const noexcept {
     float w = static_cast<float>(win.x);
     float h = static_cast<float>(win.y);
     float half = h * 0.5f;
@@ -32,19 +33,20 @@ float SineObstacle::sineY(float x, sf::Vector2u win) const {
         return half + std::abs(std::sin(M_PI / (w * 0.5f) * (x - w * 0.5f))) * half;
 }
 
-void SineObstacle::update(sf::Vector2u windowSize) {
+void SineObstacle::update(sf::Vector2u windowSize) noexcept {
     m_x -= 3.f;
-    if (m_x < 0) {
+    if (m_x < 0 && windowSize.x > 0) {
+        float rangeX = windowSize.x * 0.5f;
         m_x = windowSize.x * 0.5f +
-              static_cast<float>(std::rand() % static_cast<int>(windowSize.x * 0.5f + 1));
+              (rangeX > 0 ? static_cast<float>(std::rand() % static_cast<int>(rangeX)) : 0.f);
     }
     m_sprite.setPosition(m_x, sineY(m_x, windowSize));
 }
 
-void SineObstacle::draw(sf::RenderWindow& window) const {
+void SineObstacle::draw(sf::RenderWindow& window) const noexcept {
     window.draw(m_sprite);
 }
 
-sf::FloatRect SineObstacle::getBounds() const {
+sf::FloatRect SineObstacle::getBounds() const noexcept {
     return m_sprite.getGlobalBounds();
 }

@@ -13,17 +13,19 @@ ParabolicObstacle::ParabolicObstacle(sf::Vector2u windowSize, const std::string&
 }
 
 void ParabolicObstacle::reset(sf::Vector2u windowSize) {
+    if (windowSize.x == 0 || windowSize.y == 0) return;
     float h = windowSize.y * SCALE_FACTOR;
     float s = h / static_cast<float>(m_sprite.getTextureRect().height > 0
                   ? m_sprite.getTextureRect().height : 1);
     m_sprite.setScale(s, s);
-    m_x          = windowSize.x * 0.5f +
-                   static_cast<float>(std::rand() % static_cast<int>(windowSize.x * 0.5f + 1));
+    float rangeX = windowSize.x * 0.5f;
+    m_x = windowSize.x * 0.5f +
+          (rangeX > 0 ? static_cast<float>(std::rand() % static_cast<int>(rangeX)) : 0.f);
     m_movingLeft = true;
     m_sprite.setPosition(m_x, parabolicY(m_x, windowSize));
 }
 
-float ParabolicObstacle::parabolicY(float x, sf::Vector2u win) const {
+float ParabolicObstacle::parabolicY(float x, sf::Vector2u win) const noexcept {
     float w    = static_cast<float>(win.x);
     float h    = static_cast<float>(win.y);
     float half = h * 0.5f;
@@ -36,26 +38,28 @@ float ParabolicObstacle::parabolicY(float x, sf::Vector2u win) const {
         return half + half * std::sqrt(std::max(0.f, para));
 }
 
-void ParabolicObstacle::update(sf::Vector2u windowSize) {
+void ParabolicObstacle::update(sf::Vector2u windowSize) noexcept {
+    if (windowSize.x == 0) return;
     float speed = 4.f;
     if (m_movingLeft) {
         m_x -= speed;
         if (m_x < 0) m_movingLeft = false;
     } else {
         m_x += speed;
-        if (m_x > windowSize.x) {
+        if (m_x > static_cast<float>(windowSize.x)) {
             m_movingLeft = true;
+            float rangeX = windowSize.x * 0.5f;
             m_x = windowSize.x * 0.5f +
-                  static_cast<float>(std::rand() % static_cast<int>(windowSize.x * 0.5f + 1));
+                  (rangeX > 0 ? static_cast<float>(std::rand() % static_cast<int>(rangeX)) : 0.f);
         }
     }
     m_sprite.setPosition(m_x, parabolicY(m_x, windowSize));
 }
 
-void ParabolicObstacle::draw(sf::RenderWindow& window) const {
+void ParabolicObstacle::draw(sf::RenderWindow& window) const noexcept {
     window.draw(m_sprite);
 }
 
-sf::FloatRect ParabolicObstacle::getBounds() const {
+sf::FloatRect ParabolicObstacle::getBounds() const noexcept {
     return m_sprite.getGlobalBounds();
 }

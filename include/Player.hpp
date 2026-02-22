@@ -27,6 +27,21 @@ public:
 
     void reset(sf::Vector2u windowSize);
 
+    // ─── RL helpers ────────────────────────────────────────────────────
+    // Apply a velocity impulse (used by the RL agent to inject actions).
+    void applyImpulse(sf::Vector2f delta) noexcept { m_vel += delta; }
+    // Centre of the sprite in screen space.
+    sf::Vector2f getPosition() const noexcept {
+        auto b = getBounds();
+        return { b.left + b.width * 0.5f, b.top + b.height * 0.5f };
+    }
+    // Current velocity (px/frame) for RL state observation.
+    sf::Vector2f getVelocity() const noexcept { return m_vel; }
+    // Sprite reference for pixel-perfect collision (SpriteBounds.hpp).
+    const sf::Sprite& getSprite() const noexcept { return m_sprite; }
+    // Update the known window size (needed for boundary clamping on RL step path).
+    void setWindowSize(sf::Vector2u ws) noexcept { m_winSize = ws; }
+
     // ─── Debug ─────────────────────────────────────────────────────────────
     // Draw lethal (red) and graze (yellow) hitbox outlines.
     void drawDebugHitboxes(sf::RenderWindow& window) const;
@@ -36,8 +51,9 @@ private:
 
     sf::Sprite       m_sprite;
     sf::Vector2f     m_vel;
-    int              m_dashFrames  = 0;   // iframes remaining
-    sf::Clock        m_dashClock;         // time since last dash fired
-    bool             m_dashFired   = false; // was dash used at least once?
+    int              m_dashFrames  = 0;
+    sf::Clock        m_dashClock;
+    bool             m_dashFired   = false;
     ParticleEmitter  m_particles;
+    sf::Vector2u     m_winSize     = {};  // kept in sync each frame for clamping
 };

@@ -3,8 +3,9 @@
 #include <cmath>
 #include <algorithm>
 #include <stdexcept>
+#include <limits>
+#include <numeric>
 
-// Scale obstacle relative to window: roughly 2% of smaller dimension
 static constexpr float OBS_SIZE_FACTOR = 0.02f;
 
 ConvexObstacle::ConvexObstacle(sf::Vector2u windowSize)
@@ -14,7 +15,6 @@ ConvexObstacle::ConvexObstacle(sf::Vector2u windowSize)
 }
 
 void ConvexObstacle::reset(sf::Vector2u windowSize) {
-    // Guard against degenerate window sizes
     if (windowSize.x == 0 || windowSize.y == 0)
         throw std::invalid_argument("ConvexObstacle: window size must be non-zero");
 
@@ -31,15 +31,19 @@ void ConvexObstacle::reset(sf::Vector2u windowSize) {
     m_x = static_cast<float>(windowSize.x);
     m_y = static_cast<float>(std::rand() % windowSize.y);
     m_shape.setPosition(m_x, m_y);
+    m_lastVel = {0.f, 0.f};
 }
 
 void ConvexObstacle::setSpeed(float speed) noexcept { m_speed = speed; }
 
 void ConvexObstacle::update(sf::Vector2u /*windowSize*/) noexcept {
-    m_x -= m_speed * m_speedMult;
+    float step = m_speed * m_speedMult;
+    m_x -= step;
     m_rotation += 2.0f * m_speedMult;
     m_shape.setPosition(m_x, m_y);
     m_shape.setRotation(m_rotation);
+    // Triangles only move horizontally
+    m_lastVel = {-step, 0.f};
 }
 
 void ConvexObstacle::draw(sf::RenderWindow& window) const noexcept {
@@ -54,19 +58,15 @@ sf::FloatRect ConvexObstacle::getBounds() const noexcept {
 void ConvexObstaclePool::update(sf::Vector2u windowSize, float speed) {
     m_speed = speed;
 
-    // Reserve capacity upfront so push_back never reallocates mid-frame.
-    // 30 obstacles is safely beyond any in-game maximum.
     if (m_obstacles.capacity() < 30)
         m_obstacles.reserve(30);
 
-    // Random spawning (approx 1-in-50 chance per frame)
     if (std::rand() % 50 == 0)
         spawnOne(windowSize);
 
     for (auto& obs : m_obstacles)
         obs.update(windowSize);
 
-    // Remove off-screen obstacles
     m_obstacles.erase(
         std::remove_if(m_obstacles.begin(), m_obstacles.end(),
             [](const ConvexObstacle& o) {
@@ -97,6 +97,44 @@ bool ConvexObstaclePool::collidesWithPlayer(sf::FloatRect playerBounds) const no
         if (playerBounds.intersects(obs.getBounds()))
             return true;
     return false;
+}
+
+std::vector<ObstacleSnapshot>
+ConvexObstaclePool::getSnapshots(sf::Vector2f playerPos,
+                                  std::size_t  maxCount) const noexcept {
+    // Collect all active obstacles with their squared-distance to player
+    struct Candidate {
+        float        distSq;
+        sf::Vector2f center;
+        sf::Vector2f velocity;
+    };
+    std::vector<Candidate> cands;
+    cands.reserve(m_obstacles.size());
+
+    for (const auto& obs : m_obstacles) {
+        sf::FloatRect b = obs.getBounds();
+        sf::Vector2f  c{ b.left + b.width * 0.5f, b.top + b.height * 0.5f };
+        float dx = c.x - playerPos.x;
+        float dy = c.y - playerPos.y;
+        cands.push_back({ dx*dx + dy*dy, c, obs.getVelocity() });
+    }
+
+    // Sort by proximity then take the nearest maxCount
+    std::sort(cands.begin(), cands.end(),
+              [](const Candidate& a, const Candidate& b) {
+                  return a.distSq < b.distSq;
+              });
+
+    std::vector<ObstacleSnapshot> result;
+    result.reserve(maxCount);
+    for (std::size_t i = 0; i < maxCount && i < cands.size(); ++i)
+        result.push_back({ cands[i].center, cands[i].velocity });
+
+    // Pad with zero entries if fewer than maxCount
+    while (result.size() < maxCount)
+        result.push_back({ {0.f, 0.f}, {0.f, 0.f} });
+
+    return result;
 }
 
 void ConvexObstaclePool::spawnOne(sf::Vector2u windowSize) {

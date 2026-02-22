@@ -1,5 +1,15 @@
 #include "Level3.hpp"
 #include "Constants.hpp"
+#include "SpriteBounds.hpp"
+#include "AssetManager.hpp"
+#include <algorithm>
+#include <cmath>
+
+static constexpr int   MAX_OBJ_SLOTS = 8;
+static constexpr int   NUM_OBJ_TYPES = 6;
+static constexpr float MAX_VEL       = 10.f;
+static constexpr float REF_W         = 1920.f;
+static constexpr float REF_H         = 1080.f;
 
 Level3::Level3(sf::RenderWindow& window)
     : Level(window)
@@ -10,39 +20,38 @@ Level3::Level3(sf::RenderWindow& window)
 {
 }
 
+// ─── Normal gameplay update ───────────────────────────────────────────────────
 bool Level3::update() {
     auto  winSize = m_window.getSize();
     float dt      = 1.f / 60.f;
     float sonar   = getSonarFactor();
 
-    // ─── Player ──────────────────────────────────────────────────────────────
     bool dashed = m_player.handleInput(winSize);
     m_player.update(dt);
     if (dashed) triggerShake(DASH_SHAKE_FRAMES, DASH_SHAKE_INTENSITY);
 
-    // ─── Obstacles (sonar slow) ───────────────────────────────────────────────
     m_sec.setSpeedMultiplier(sonar);
     m_expSine.setSpeedMultiplier(sonar);
     m_sec.update(winSize);
     m_expSine.update(winSize);
 
-    // ─── Treasure ────────────────────────────────────────────────────────────
     if (m_player.getBounds().intersects(m_treasure.getBounds())) {
         m_treasure.respawn(winSize);
         addScore(10);
     }
 
-    // ─── Graze ───────────────────────────────────────────────────────────────
     int gs = checkGraze(m_player.getGrazeBounds(), m_player.getBounds(),
                         m_sec.getBounds());
     gs    += checkGraze(m_player.getGrazeBounds(), m_player.getBounds(),
                         m_expSine.getBounds());
     if (gs > 0) addScore(GRAZE_SCORE_PER_FRAME * gs);
 
-    // ─── Lethal collision (iframes during dash) ───────────────────────────────
     if (!m_player.isDashing()) {
-        if (m_player.getBounds().intersects(m_sec.getBounds()) ||
-            m_player.getBounds().intersects(m_expSine.getBounds())) {
+        auto& am = AssetManager::instance();
+        if (pixelPerfectOverlap(m_player.getSprite(), am.image("submarine"),
+                                m_sec.getSprite(),    am.image("octopus"))  ||
+            pixelPerfectOverlap(m_player.getSprite(), am.image("submarine"),
+                                m_expSine.getSprite(),am.image("fish")))    {
             triggerShake(SHAKE_FRAMES_DEATH, SHAKE_INTENSITY_DEATH);
             return true;
         }
@@ -57,16 +66,122 @@ void Level3::draw() {
     m_player.draw(m_window);
 
     if (m_debugMode) {
+        auto& am = AssetManager::instance();
         m_player.drawDebugHitboxes(m_window);
-        auto drawObs = [&](sf::FloatRect b, sf::Color c) {
-            sf::RectangleShape r({b.width, b.height});
-            r.setPosition({b.left, b.top});
-            r.setFillColor(sf::Color::Transparent);
-            r.setOutlineColor(c);
-            r.setOutlineThickness(2.f);
-            m_window.draw(r);
-        };
-        drawObs(m_sec.getBounds(),     sf::Color(255, 60, 60, 200));
-        drawObs(m_expSine.getBounds(), sf::Color(255, 60, 60, 200));
+        drawDebugHull(m_window, m_player.getSprite(), am.hullUV("submarine"),
+                      sf::Color(80, 255, 80, 220));
+        drawDebugHull(m_window, m_sec.getSprite(),    am.hullUV("octopus"),
+                      sf::Color(255, 80, 80, 220));
+        drawDebugHull(m_window, m_expSine.getSprite(), am.hullUV("fish"),
+                      sf::Color(255, 80, 80, 220));
     }
+}
+
+// ─── RL Environment API ───────────────────────────────────────────────────────
+static auto centreOf = [](sf::FloatRect b) -> sf::Vector2f {
+    return { b.left + b.width * 0.5f, b.top + b.height * 0.5f };
+};
+
+std::vector<float> Level3::getState() const {
+    auto winSize = m_window.getSize();
+    float wf = static_cast<float>(winSize.x ? winSize.x : 1);
+    float hf = static_cast<float>(winSize.y ? winSize.y : 1);
+
+    sf::Vector2f ppos = m_player.getPosition();
+    sf::Vector2f pvel = m_player.getVelocity();
+    sf::Vector2f sC   = centreOf(m_sec.getBounds());
+    sf::Vector2f eC   = centreOf(m_expSine.getBounds());
+    sf::Vector2f tC   = centreOf(m_treasure.getBounds());
+    sf::Vector2f sV   = m_sec.getVelocity();
+    sf::Vector2f eV   = m_expSine.getVelocity();
+
+    std::vector<float> s(49, 0.f);
+
+    s[0] = 1.0f;
+    s[1] = std::clamp(wf / REF_W, 0.f, 1.f);
+    s[2] = std::clamp(hf / REF_H, 0.f, 1.f);
+    s[3] = std::clamp(ppos.x / wf, 0.f, 1.f);
+    s[4] = std::clamp(ppos.y / hf, 0.f, 1.f);
+    s[5] = std::clamp(pvel.x / PLAYER_MAX_SPEED, -1.f, 1.f);
+    s[6] = std::clamp(pvel.y / PLAYER_MAX_SPEED, -1.f, 1.f);
+    s[7] = std::clamp(static_cast<float>(m_stepsSinceReward) / 300.f, 0.f, 1.f);
+    s[8] = std::clamp(m_lastReward / 100.f, -1.f, 1.f);
+
+    s[9]  = 5.f / NUM_OBJ_TYPES;
+    s[10] = std::clamp(sC.x / wf, 0.f, 1.f);
+    s[11] = std::clamp(sC.y / hf, 0.f, 1.f);
+    s[12] = std::clamp(sV.x / MAX_VEL, -1.f, 1.f);
+    s[13] = std::clamp(sV.y / MAX_VEL, -1.f, 1.f);
+
+    s[14] = 6.f / NUM_OBJ_TYPES;
+    s[15] = std::clamp(eC.x / wf, 0.f, 1.f);
+    s[16] = std::clamp(eC.y / hf, 0.f, 1.f);
+    s[17] = std::clamp(eV.x / MAX_VEL, -1.f, 1.f);
+    s[18] = std::clamp(eV.y / MAX_VEL, -1.f, 1.f);
+
+    s[19] = 1.f / NUM_OBJ_TYPES;
+    s[20] = std::clamp(tC.x / wf, 0.f, 1.f);
+    s[21] = std::clamp(tC.y / hf, 0.f, 1.f);
+
+    return s;
+}
+
+std::vector<float> Level3::reset(sf::Vector2u windowSize) {
+    resetScore();
+    m_player.reset(windowSize);
+    m_sec.reset(windowSize);
+    m_expSine.reset(windowSize);
+    m_treasure.respawn(windowSize);
+    m_gameOver = false;
+    m_prevDistToTreasure = -1.f;   // will be computed on first step()
+    return getState();
+}
+
+std::vector<float> Level3::step(int action, float& reward, bool& isDone) {
+    auto  winSize = getSimSize();           // virtual size for multi-screen training
+    float dt      = 1.f / 60.f;
+
+    applyAction(m_player, action);
+    m_player.setWindowSize(winSize);
+    m_player.update(dt);
+    m_sec.update(winSize);
+    m_expSine.update(winSize);
+
+    isDone = false;
+
+    // ── Distance-to-treasure shaping ──────────────────────────────────────────
+    sf::Vector2f pC = centreOf(m_player.getBounds());
+    sf::Vector2f tC = centreOf(m_treasure.getBounds());
+    float dx = pC.x - tC.x,  dy = pC.y - tC.y;
+    float curDist = std::sqrt(dx*dx + dy*dy);
+
+    float approach = 0.f;
+    if (m_prevDistToTreasure > 0.f)
+        approach = (m_prevDistToTreasure - curDist) * 0.10f;
+    m_prevDistToTreasure = curDist;
+
+    reward = approach - 0.05f;
+
+    // ── Treasure collected ────────────────────────────────────────────────
+    if (m_player.getBounds().intersects(m_treasure.getBounds())) {
+        m_treasure.respawn(winSize);
+        addScore(10);
+        reward += 100.f;
+        m_prevDistToTreasure = -1.f;
+    }
+
+    // ── Lethal collision ───────────────────────────────────────────────────
+    auto& am = AssetManager::instance();
+    if (pixelPerfectOverlap(m_player.getSprite(), am.image("submarine"),
+                            m_sec.getSprite(),    am.image("octopus"))  ||
+        pixelPerfectOverlap(m_player.getSprite(), am.image("submarine"),
+                            m_expSine.getSprite(),am.image("fish")))    {
+        reward = -100.f;
+        isDone = true;
+    }
+
+    m_stepsSinceReward = (reward > 0.f) ? 0 : m_stepsSinceReward + 1;
+    m_lastReward = reward;
+
+    return getState();
 }

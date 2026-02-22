@@ -21,10 +21,12 @@ void Player::reset(sf::Vector2u windowSize) {
     m_vel        = {0.f, 0.f};
     m_dashFrames = 0;
     m_dashFired  = false;
+    m_winSize    = windowSize;   // remember for clamping
 }
 
 // ─── Input + physics ──────────────────────────────────────────────────────────
-bool Player::handleInput(sf::Vector2u /*windowSize*/) {
+bool Player::handleInput(sf::Vector2u windowSize) {
+    m_winSize = windowSize;      // keep in sync if window is resized
     bool dashedThisFrame = false;
 
     // ─── Acceleration from arrow keys ────────────────────────────────────────
@@ -66,6 +68,22 @@ void Player::update(float dt) noexcept {
 
     // ─── Move ─────────────────────────────────────────────────────────────────
     m_sprite.move(m_vel);
+
+    // ─── Clamp to window bounds (all 4 edges) ─────────────────────────────────
+    if (m_winSize.x > 0 && m_winSize.y > 0) {
+        sf::FloatRect b = m_sprite.getGlobalBounds();
+        float ww = static_cast<float>(m_winSize.x);
+        float wh = static_cast<float>(m_winSize.y);
+        float px = m_sprite.getPosition().x;
+        float py = m_sprite.getPosition().y;
+        // Left / right
+        if (b.left < 0.f)                    { px -= b.left;            m_vel.x = 0.f; }
+        if (b.left + b.width > ww)           { px -= (b.left + b.width - ww); m_vel.x = 0.f; }
+        // Top / bottom
+        if (b.top < 0.f)                     { py -= b.top;             m_vel.y = 0.f; }
+        if (b.top + b.height > wh)           { py -= (b.top + b.height - wh); m_vel.y = 0.f; }
+        m_sprite.setPosition(px, py);
+    }
 
     // ─── Tick dash iframes ────────────────────────────────────────────────────
     if (m_dashFrames > 0) --m_dashFrames;

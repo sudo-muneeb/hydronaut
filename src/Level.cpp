@@ -1,4 +1,5 @@
 #include "Level.hpp"
+#include "Player.hpp"
 #include "AssetManager.hpp"
 #include "Constants.hpp"
 #include <cstdlib>
@@ -153,6 +154,53 @@ void Level::handleEvents() {
 void Level::triggerShake(int frames, float intensity) noexcept {
     m_shakeFrames    = frames;
     m_shakeIntensity = intensity;
+}
+
+// ─── Inference rendering ────────────────────────────────────────────────
+// Renders one visual frame (background, sprites, sonar, HUD) without calling
+// update() or polling input.  Mirrors the render block inside run().
+void Level::renderFrame() {
+    m_window.clear();
+    applyShake();
+    drawBackground();
+    draw();              // virtual — actual level sprites
+    drawSonarRing();
+    drawDebugOverlay();
+    drawHUD();
+    drawGrazeHUD();
+    restoreView();
+    m_window.display();
+}
+
+// ─── Virtual size ─────────────────────────────────────────────────────────────
+// Overrides the physics/state coordinate space without resizing the OS window.
+void Level::setVirtualSize(sf::Vector2u sz) noexcept {
+    m_virtualSize = sz;
+    m_baseView = sf::View(sf::FloatRect(
+        0.f, 0.f,
+        static_cast<float>(sz.x), static_cast<float>(sz.y)));
+    m_window.setView(m_baseView);
+}
+
+sf::Vector2u Level::getSimSize() const noexcept {
+    return (m_virtualSize.x > 0 && m_virtualSize.y > 0)
+               ? m_virtualSize
+               : m_window.getSize();
+}
+
+
+// Action space: 0=Up, 1=Down, 2=Left, 3=Right.
+// Applies a fixed velocity impulse equal to PLAYER_ACCEL * 4 so the agent
+// responds at a similar scale to human key-holds.
+void Level::applyAction(Player& player, int action) noexcept {
+    constexpr float IMPULSE = PLAYER_ACCEL * 4.f;
+    switch (action) {
+        case 0: player.applyImpulse({ 0.f, -IMPULSE}); break;  // Up
+        case 1: player.applyImpulse({ 0.f,  IMPULSE}); break;  // Down
+        case 2: player.applyImpulse({-IMPULSE, 0.f}); break;   // Left
+        case 3: player.applyImpulse({ IMPULSE, 0.f}); break;   // Right
+        default: break;
+    }
 }
 
 void Level::applyShake() {

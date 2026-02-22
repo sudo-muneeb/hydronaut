@@ -5,6 +5,10 @@
 // All obstacle types implement update() and draw() with respect to
 // the live window dimensions. Speed can be scaled by setSpeedMultiplier()
 // (used by the Sonar Pulse to slow obstacles within its radius).
+//
+// For RL: each subclass tracks its frame-by-frame centre displacement in
+// m_lastVel so the agent can observe both position AND velocity without
+// needing an explicit direction flag.
 class Obstacle {
 public:
     virtual ~Obstacle() = default;
@@ -19,6 +23,11 @@ public:
         m_speedMult = (m < 0.f) ? 0.f : (m > 1.f ? 1.f : m);
     }
 
+    // ─── RL: frame velocity (pixel/frame displacement in each axis).
+    // Updated by each subclass's update() as  Δcentre = newCentre - prevCentre.
+    sf::Vector2f getVelocity() const noexcept { return m_lastVel; }
+
 protected:
-    float m_speedMult = 1.0f;
+    float        m_speedMult = 1.0f;
+    sf::Vector2f m_lastVel   {0.f, 0.f};  // set by subclass update()
 };

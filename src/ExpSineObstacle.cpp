@@ -32,13 +32,22 @@ float ExpSineObstacle::expSineY(float x, sf::Vector2u win) const noexcept {
 
 void ExpSineObstacle::update(sf::Vector2u windowSize) noexcept {
     if (windowSize.x == 0) return;
+    float prevX   = m_x;
+    float prevY   = expSineY(m_x, windowSize);
+    bool  wrapped = false;
+
     m_x -= 3.f * m_speedMult;
     if (m_x < 0) {
         float rangeX = windowSize.x * 0.5f;
         m_x = windowSize.x * 0.5f +
               (rangeX > 0 ? static_cast<float>(std::rand() % static_cast<int>(rangeX)) : 0.f);
+        wrapped = true;
     }
-    m_sprite.setPosition(m_x, expSineY(m_x, windowSize));
+    float newY = expSineY(m_x, windowSize);
+    m_sprite.setPosition(m_x, newY);
+
+    m_lastVel = wrapped ? sf::Vector2f{0.f, 0.f}
+                        : sf::Vector2f{m_x - prevX, newY - prevY};
 }
 
 void ExpSineObstacle::draw(sf::RenderWindow& window) const noexcept {

@@ -12,6 +12,7 @@ public:
     void          draw(sf::RenderWindow& window)  const noexcept override;
     sf::FloatRect getBounds()                     const noexcept override;
     void          reset(sf::Vector2u windowSize)  override;
+    const sf::Sprite& getSprite()                 const noexcept { return m_sprite; }
 
 private:
     float expSineY(float x, sf::Vector2u win) const noexcept;

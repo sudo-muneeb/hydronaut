@@ -34,13 +34,20 @@ float SineObstacle::sineY(float x, sf::Vector2u win) const noexcept {
 }
 
 void SineObstacle::update(sf::Vector2u windowSize) noexcept {
+    float prevX = m_x;
+    float prevY = sineY(m_x, windowSize);
+
     m_x -= 3.f * m_speedMult;
     if (m_x < 0 && windowSize.x > 0) {
         float rangeX = windowSize.x * 0.5f;
         m_x = windowSize.x * 0.5f +
               (rangeX > 0 ? static_cast<float>(std::rand() % static_cast<int>(rangeX)) : 0.f);
     }
-    m_sprite.setPosition(m_x, sineY(m_x, windowSize));
+    float newY = sineY(m_x, windowSize);
+    m_sprite.setPosition(m_x, newY);
+
+    // RL: record per-frame displacement so agent can infer direction + speed
+    m_lastVel = { m_x - prevX, newY - prevY };
 }
 
 void SineObstacle::draw(sf::RenderWindow& window) const noexcept {

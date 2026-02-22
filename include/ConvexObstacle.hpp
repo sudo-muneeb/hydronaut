@@ -1,10 +1,9 @@
 #pragma once
 #include "Obstacle.hpp"
 #include <vector>
+#include <limits>
 
 // ─── Level 1 — Rotating convex-triangle obstacle ──────────────────────────────
-// Triangles spawn from the right and fly left. Speed scales with score.
-// All x/y values are computed relative to window size.
 class ConvexObstacle : public Obstacle {
 public:
     explicit ConvexObstacle(sf::Vector2u windowSize);
@@ -12,16 +11,20 @@ public:
     void          update(sf::Vector2u windowSize) noexcept override;
     void          draw(sf::RenderWindow& window)  const noexcept override;
     sf::FloatRect getBounds()                     const noexcept override;
-    void          reset(sf::Vector2u windowSize)  override;   // may throw on zero size
-
-    // Increase speed (called by Level1 as score climbs).
-    void setSpeed(float speed) noexcept;
+    void          reset(sf::Vector2u windowSize)  override;
+    void          setSpeed(float speed)           noexcept;
 
 private:
     sf::ConvexShape m_shape;
     float           m_x, m_y;
     float           m_speed;
     float           m_rotation;
+};
+
+// ─── ObstacleSnapshot — used by the RL state vector ──────────────────────────
+struct ObstacleSnapshot {
+    sf::Vector2f center;    // screen-space centre of the obstacle
+    sf::Vector2f velocity;  // frame-by-frame displacement (px/frame)
 };
 
 // ─── Managed collection of ConvexObstacles for Level 1 ───────────────────────
@@ -31,6 +34,12 @@ public:
     void draw(sf::RenderWindow& window)               const;
     void drawDebugBounds(sf::RenderWindow& window)    const;
     bool collidesWithPlayer(sf::FloatRect playerBounds) const noexcept;
+
+    // RL: returns up to maxCount snapshots for the active obstacles nearest
+    // to playerPos, sorted ascending by squared distance.  Pads with
+    // zero-velocity, zero-position entries if fewer are active.
+    std::vector<ObstacleSnapshot> getSnapshots(sf::Vector2f playerPos,
+                                               std::size_t  maxCount) const noexcept;
 
 private:
     void spawnOne(sf::Vector2u windowSize);

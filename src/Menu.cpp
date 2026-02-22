@@ -126,10 +126,9 @@ int Menu::run() {
                 return -1;
 
             if (event.type == sf::Event::Resized) {
-                unsigned w = std::max(event.size.width,  (unsigned)MIN_WINDOW_WIDTH);
-                unsigned h = std::max(event.size.height, (unsigned)MIN_WINDOW_HEIGHT);
-                m_window.setSize(sf::Vector2u(w, h));
-                // Keep view in sync with new physical size
+                // Keep logical view in sync with whatever the OS reports.
+                unsigned w = event.size.width;
+                unsigned h = event.size.height;
                 m_window.setView(sf::View(sf::FloatRect(0.f, 0.f, (float)w, (float)h)));
             }
 

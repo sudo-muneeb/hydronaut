@@ -40,6 +40,10 @@ float ParabolicObstacle::parabolicY(float x, sf::Vector2u win) const noexcept {
 
 void ParabolicObstacle::update(sf::Vector2u windowSize) noexcept {
     if (windowSize.x == 0) return;
+    float prevX = m_x;
+    float prevY = parabolicY(m_x, windowSize);
+    bool  wrapped = false;
+
     float speed = 4.f * m_speedMult;
     if (m_movingLeft) {
         m_x -= speed;
@@ -51,9 +55,15 @@ void ParabolicObstacle::update(sf::Vector2u windowSize) noexcept {
             float rangeX = windowSize.x * 0.5f;
             m_x = windowSize.x * 0.5f +
                   (rangeX > 0 ? static_cast<float>(std::rand() % static_cast<int>(rangeX)) : 0.f);
+            wrapped = true;
         }
     }
-    m_sprite.setPosition(m_x, parabolicY(m_x, windowSize));
+    float newY = parabolicY(m_x, windowSize);
+    m_sprite.setPosition(m_x, newY);
+
+    // RL: record displacement; zero on wrap to avoid ghost velocity spike
+    m_lastVel = wrapped ? sf::Vector2f{0.f, 0.f}
+                        : sf::Vector2f{m_x - prevX, newY - prevY};
 }
 
 void ParabolicObstacle::draw(sf::RenderWindow& window) const noexcept {

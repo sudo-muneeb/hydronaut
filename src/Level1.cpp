@@ -103,8 +103,10 @@ std::vector<float> Level1::step(int action, float& reward, bool& isDone) {
     auto winSize = m_window.getSize();
     float dt     = 1.f / 60.f;
 
-    // RL path: applyCommand with action enum (no dash in RL — action 4 = None).
-    m_player.applyCommand(action, false);
+    // RL path: use applyAction (PLAYER_ACCEL*4 impulse) — preserves the
+    // original steering authority that the agent was trained with.
+    applyAction(m_player, action);
+    m_player.setWindowSize(winSize);
     m_player.update(dt);
 
     if (getScore() < SCORE_SPEED_THRESHOLD)

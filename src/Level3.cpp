@@ -144,7 +144,9 @@ std::vector<float> Level3::step(int action, float& reward, bool& isDone) {
     auto  winSize = getSimSize();
     float dt      = 1.f / 60.f;
 
-    m_player.applyCommand(action, false);
+    // RL path: use applyAction (PLAYER_ACCEL*4 impulse) — same authority as
+    // human multi-frame key-hold.  applyCommand would be 4× weaker.
+    applyAction(m_player, action);
     m_player.setWindowSize(winSize);
     m_player.update(dt);
     m_sec.update(winSize);
@@ -157,27 +159,37 @@ std::vector<float> Level3::step(int action, float& reward, bool& isDone) {
     float dx = pC.x - tC.x,  dy = pC.y - tC.y;
     float curDist = std::sqrt(dx*dx + dy*dy);
 
-    float approach = 0.f;
-    if (m_prevDistToTreasure > 0.f)
-        approach = (m_prevDistToTreasure - curDist) * 0.10f;
+    // ── Survival reward ─────────────────────────────────────────────────
+    reward = 0.15f;
+
+    // ── Approach shaping (×5 vs old) ───────────────────────────────────
+    if (m_prevDistToTreasure > 0.f) {
+        float approach = (m_prevDistToTreasure - curDist) * 0.50f;
+        reward += approach;
+    }
     m_prevDistToTreasure = curDist;
 
-    reward = approach - 0.05f;
+    // ── Idleness penalty ──────────────────────────────────────────────
+    sf::Vector2f vel = m_player.getVelocity();
+    float speed = std::sqrt(vel.x * vel.x + vel.y * vel.y);
+    if (speed < 0.5f) reward -= 0.5f;
 
+    // ── Treasure collected ────────────────────────────────────────────
     if (m_player.getBounds().intersects(m_treasure.getBounds())) {
         m_treasure.respawn(winSize);
         addScore(10);
-        reward += 100.f;
+        reward += 200.f;
         m_prevDistToTreasure = -1.f;
     }
 
+    // ── Lethal collision ─────────────────────────────────────────────
     auto& am = AssetManager::instance();
     if (pixelPerfectOverlap(m_player.getSprite(), am.image("submarine"),
                             m_sec.getSprite(),    am.image("octopus"))  ||
         pixelPerfectOverlap(m_player.getSprite(), am.image("submarine"),
                             m_expSine.getSprite(),am.image("fish")))    {
-        reward = -100.f;
-        isDone = true;
+        reward  = -100.f;
+        isDone  = true;
     }
 
     m_stepsSinceReward = (reward > 0.f) ? 0 : m_stepsSinceReward + 1;

@@ -144,8 +144,9 @@ std::vector<float> Level2::step(int action, float& reward, bool& isDone) {
     auto  winSize = getSimSize();
     float dt      = 1.f / 60.f;
 
-    // RL path: no dash (action 4 = None if agent doesn't move, dash=false).
-    m_player.applyCommand(action, false);
+    // RL path: use applyAction (PLAYER_ACCEL*4 impulse) — same authority as
+    // human multi-frame key-hold.  applyCommand would be 4× weaker.
+    applyAction(m_player, action);
     m_player.setWindowSize(winSize);
     m_player.update(dt);
     m_sine.update(winSize);
@@ -158,27 +159,37 @@ std::vector<float> Level2::step(int action, float& reward, bool& isDone) {
     float dx = pC.x - tC.x,  dy = pC.y - tC.y;
     float curDist = std::sqrt(dx*dx + dy*dy);
 
-    float approach = 0.f;
-    if (m_prevDistToTreasure > 0.f)
-        approach = (m_prevDistToTreasure - curDist) * 0.10f;
+    // ── Survival reward — being alive every frame has value ───────────────
+    reward = 0.15f;
+
+    // ── Approach shaping — scaled ×5 vs old code, encourages chasing ──────
+    if (m_prevDistToTreasure > 0.f) {
+        float approach = (m_prevDistToTreasure - curDist) * 0.50f;
+        reward += approach;
+    }
     m_prevDistToTreasure = curDist;
 
-    reward = approach - 0.05f;
+    // ── Idleness penalty — punish barely-moving agent ─────────────────────
+    sf::Vector2f vel = m_player.getVelocity();
+    float speed = std::sqrt(vel.x * vel.x + vel.y * vel.y);
+    if (speed < 0.5f) reward -= 0.5f;
 
+    // ── Treasure collected ────────────────────────────────────────────────
     if (m_player.getBounds().intersects(m_treasure.getBounds())) {
         m_treasure.respawn(winSize);
         addScore(10);
-        reward += 100.f;
+        reward += 200.f;                 // big positive spike to anchor goal
         m_prevDistToTreasure = -1.f;
     }
 
+    // ── Lethal collision ───────────────────────────────────────────────────
     auto& am = AssetManager::instance();
     if (pixelPerfectOverlap(m_player.getSprite(), am.image("submarine"),
                             m_sine.getSprite(),   am.image("urchin"))   ||
         pixelPerfectOverlap(m_player.getSprite(), am.image("submarine"),
                             m_para.getSprite(),   am.image("crab")))    {
-        reward = -100.f;
-        isDone = true;
+        reward  = -100.f;
+        isDone  = true;
     }
 
     m_stepsSinceReward = (reward > 0.f) ? 0 : m_stepsSinceReward + 1;

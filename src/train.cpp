@@ -25,12 +25,12 @@
 #include "DQNAgent.hpp"
 
 // ─── Training configuration ───────────────────────────────────────────────────
-static constexpr int   EPISODES      = 500;
-static constexpr int   MAX_STEPS     = 5000;  // safety cap per episode (more frames now)
-static constexpr int   LEARN_EVERY   = 4;     // call learn() every N game frames
-static constexpr int   WARMUP_EXP    = 64;    // minimum experiences before learning
-static constexpr int   HOLD_MIN      = 15;    // minimum action hold (frames)
-static constexpr int   HOLD_MAX      = 60;    // maximum action hold (~4 Hz at 60fps)
+static constexpr int   EPISODES      = 2000;
+static constexpr int   MAX_STEPS     = 8000;  // more time per episode for treasure-seeking
+static constexpr int   LEARN_EVERY   = 4;
+static constexpr int   WARMUP_EXP    = 64;
+static constexpr int   HOLD_MIN      = 20;    // tighter range reduces variance
+static constexpr int   HOLD_MAX      = 50;
 static constexpr int   PRINT_EVERY   = 10;
 static const char*     MODEL_PATH    = "hydronaut_dqn.pt";
 

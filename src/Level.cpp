@@ -2,6 +2,9 @@
 #include "Player.hpp"
 #include "AssetManager.hpp"
 #include "Constants.hpp"
+#include "Settings.hpp"
+#include "HumanTrainer.hpp"
+#include "InputHandler.hpp"
 #include <cstdlib>
 #include <cmath>
 #include <string>
@@ -62,6 +65,13 @@ int Level::run() {
         float dt = frameClock.restart().asSeconds();
         dt = std::min(dt, 0.05f);
 
+        // ─── FPS Tracking ──────────────────────────────────────────────────
+        ++m_frameMeasurementCount;
+        if (m_fpsMeasurementClock.getElapsedTime().asSeconds() >= 0.5f) {
+            m_currentFps = static_cast<float>(m_frameMeasurementCount) / m_fpsMeasurementClock.restart().asSeconds();
+            m_frameMeasurementCount = 0;
+        }
+
         // ─── Sonar radius update ───────────────────────────────────────────
         if (m_sonarActive) {
             m_sonarRadius += SONAR_EXPAND_SPEED * dt;
@@ -77,10 +87,26 @@ int Level::run() {
         applyShake();
         drawBackground();
 
+        bool train = Settings::instance().isTrainOnPlay() && !m_trainingMode;
+        std::vector<float> state;
+        int action = -1;
+        if (train) {
+            state = getState();
+            action = InputHandler::pollAction();
+        }
+
+        sf::Clock logicClock;
         bool died = update();  // derived class
+        m_logicTimeMs = logicClock.getElapsedTime().asSeconds() * 1000.f;
+
+        if (train && action >= 0 && action <= 4) {
+            HumanTrainer::instance().recordExperience(state, action, m_lastReward, getState(), died);
+        }
+
         draw();                // derived class
         drawSonarRing();
         drawDebugOverlay();
+        if (m_showMetrics) drawMetricsOverlay();
         drawHUD();
         drawGrazeHUD();
         restoreView();
@@ -146,6 +172,16 @@ void Level::handleEvents() {
         if (event.type == sf::Event::KeyPressed &&
             event.key.code == sf::Keyboard::F3)
             m_debugMode = !m_debugMode;
+
+        // Metrics toggle (F4)
+        if (event.type == sf::Event::KeyPressed &&
+            event.key.code == sf::Keyboard::F4 && !m_f4KeyDown) {
+            m_showMetrics = !m_showMetrics;
+            m_f4KeyDown   = true;
+        }
+        if (event.type == sf::Event::KeyReleased &&
+            event.key.code == sf::Keyboard::F4)
+            m_f4KeyDown = false;
     }
 }
 
@@ -188,17 +224,31 @@ sf::Vector2u Level::getSimSize() const noexcept {
 }
 
 
-// Action space: 0=Up, 1=Down, 2=Left, 3=Right.
-// Applies a fixed velocity impulse equal to PLAYER_ACCEL * 4 so the agent
-// responds at a similar scale to human key-holds.
+// Action space: 0-14 composite action.
+// Base: 0=Up, 1=Down, 2=Left, 3=Right, 4=None
+// Modifier: +5 for Dash space, +10 for Sonar X
 void Level::applyAction(Player& player, int action) noexcept {
-    constexpr float IMPULSE = PLAYER_ACCEL * 4.f;
-    switch (action) {
-        case 0: player.applyImpulse({ 0.f, -IMPULSE}); break;  // Up
-        case 1: player.applyImpulse({ 0.f,  IMPULSE}); break;  // Down
-        case 2: player.applyImpulse({-IMPULSE, 0.f}); break;   // Left
-        case 3: player.applyImpulse({ IMPULSE, 0.f}); break;   // Right
-        default: break;
+    int  baseDir;
+    bool dashReq;
+    bool sonarReq;
+    InputHandler::decodeAction(action, baseDir, dashReq, sonarReq);
+
+    // 1. Movement & Dash
+    // We use the same Player::applyCommand interface that the human uses,
+    // which handles the dash multiplier and cooldowns exactly like human play.
+    bool dashed = player.applyCommand(baseDir, dashReq);
+    if (dashed) triggerShake(DASH_SHAKE_FRAMES, DASH_SHAKE_INTENSITY);
+
+    // 2. Sonar
+    if (sonarReq) {
+        bool canFire = !m_sonarActive &&
+                       (!m_sonarFired ||
+                        m_sonarCooldownClock.getElapsedTime().asSeconds() >= SONAR_COOLDOWN_SEC);
+        if (canFire) {
+            m_sonarActive = true;
+            m_sonarRadius = 0.f;
+            m_sonarCenter = m_baseView.getCenter();
+        }
     }
 }
 
@@ -412,3 +462,25 @@ void Level::showGameOver() {
         sf::sleep(sf::milliseconds(16));
     }
 }
+
+// ─── Metrics Overlay ──────────────────────────────────────────────────────────
+void Level::drawMetricsOverlay() {
+    sf::Vector2f vs = m_baseView.getSize();
+
+    sf::Text txt;
+    txt.setFont(AssetManager::instance().font());
+    txt.setCharacterSize(std::max(12u, static_cast<unsigned>(vs.y * 0.025f)));
+    txt.setFillColor(sf::Color(100, 255, 100));
+    txt.setOutlineColor(sf::Color::Black);
+    txt.setOutlineThickness(2.f);
+
+    char buf[128];
+    snprintf(buf, sizeof(buf), "FPS: %.1f\nLogic: %.2f ms\nReward/Step: %.2f", 
+             m_currentFps, m_logicTimeMs, m_lastReward);
+    txt.setString(buf);
+
+    // Position subtly on the top left, under the standard HUD
+    txt.setPosition(vs.x * 0.02f, vs.y * 0.15f);
+    m_window.draw(txt);
+}
+

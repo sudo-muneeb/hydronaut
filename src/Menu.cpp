@@ -1,30 +1,23 @@
 #include "Menu.hpp"
 #include "AssetManager.hpp"
 #include "Constants.hpp"
+#include "Settings.hpp"
+#include <string>
 
-static constexpr int NUM_ITEMS = 3;
-static const char*   ITEM_LABELS[NUM_ITEMS] = {
-    "Obstacles Unleashed",
-    "Arc of Chaos",
-    "Waves of Danger"
-};
-
-// ─── Helper: logical view size (never use window.getSize() for world coords) ──
+// ─── Helper: logical view size ────────────────────────────────────────────────
 static sf::Vector2f vSize(const sf::RenderWindow& w) {
     return w.getView().getSize();
 }
 
-Menu::Menu(sf::RenderWindow& window)
-    : m_window(window), m_font(AssetManager::instance().font())
+Menu::Menu(sf::RenderWindow& window, sf::Music* music)
+    : m_window(window), m_music(music), m_font(AssetManager::instance().font())
 {
-    // Sync the view to the actual current window size — same fix as Level.
     auto sz = m_window.getSize();
     m_window.setView(sf::View(sf::FloatRect(
         0.f, 0.f, static_cast<float>(sz.x), static_cast<float>(sz.y))));
 
-    for (int i = 0; i < NUM_ITEMS; ++i) {
+    for (int i = 0; i < MAX_ITEMS; ++i) {
         m_items[i].setFont(m_font);
-        m_items[i].setString(ITEM_LABELS[i]);
         m_items[i].setOutlineColor(sf::Color(0, 0, 60));
         m_items[i].setOutlineThickness(2.f);
     }
@@ -33,11 +26,33 @@ Menu::Menu(sf::RenderWindow& window)
     m_highlight.setOutlineColor(sf::Color(100, 200, 255, 180));
     m_highlight.setOutlineThickness(2.f);
 
-    layout();         // position items based on view size
+    m_state = State::Main;
+    m_numItems = 4; // 3 Levels + Settings
+
+    buildStrings();
+    layout();
     updateHighlight();
 }
 
-// ─── Re-layout all items relative to the current VIEW size ───────────────────
+void Menu::buildStrings() {
+    if (m_state == State::Main) {
+        m_numItems = 4;
+        m_items[0].setString("Obstacles Unleashed");
+        m_items[1].setString("Arc of Chaos");
+        m_items[2].setString("Waves of Danger");
+        m_items[3].setString("Settings...");
+    } else {
+        m_numItems = 4;
+        auto& s = Settings::instance();
+        std::string vol = "Volume: " + std::to_string(static_cast<int>(s.getVolume())) + "%  (< >)";
+        m_items[0].setString(vol);
+        m_items[1].setString(s.isMuted() ? "Mute: ON" : "Mute: OFF");
+        m_items[2].setString(s.isTrainOnPlay() ? "Train on My Play: ON" : "Train on My Play: OFF");
+        m_items[3].setString("Back");
+    }
+    layout(); // update centering
+}
+
 void Menu::layout() {
     sf::Vector2f vs   = vSize(m_window);
     unsigned itemSize = static_cast<unsigned>(vs.y * 0.06f);
@@ -46,7 +61,7 @@ void Menu::layout() {
     float spacing = vs.y * 0.12f;
     float startY  = vs.y * 0.42f;
 
-    for (int i = 0; i < NUM_ITEMS; ++i) {
+    for (int i = 0; i < m_numItems; ++i) {
         m_items[i].setCharacterSize(itemSize);
         sf::FloatRect b = m_items[i].getLocalBounds();
         m_items[i].setOrigin(b.width / 2.f, b.height / 2.f);
@@ -55,17 +70,20 @@ void Menu::layout() {
 }
 
 void Menu::updateHighlight() {
-    for (int i = 0; i < NUM_ITEMS; ++i)
-        m_items[i].setFillColor(i == m_selected
+    int sel = (m_state == State::Main) ? m_selectedMain : m_selectedSettings;
+    for (int i = 0; i < m_numItems; ++i) {
+        m_items[i].setFillColor(i == sel
             ? sf::Color(100, 220, 255)
             : sf::Color(180, 220, 255, 160));
+    }
 
-    sf::FloatRect b = m_items[m_selected].getGlobalBounds();
-    m_highlight.setSize(sf::Vector2f(b.width + 30.f, b.height + 14.f));
-    m_highlight.setPosition(b.left - 15.f, b.top - 7.f);
+    if (m_numItems > 0 && sel < m_numItems) {
+        sf::FloatRect b = m_items[sel].getGlobalBounds();
+        m_highlight.setSize(sf::Vector2f(b.width + 30.f, b.height + 14.f));
+        m_highlight.setPosition(b.left - 15.f, b.top - 7.f);
+    }
 }
 
-// ─── Background — uses VIEW size, not physical window size ───────────────────
 void Menu::drawBackground() {
     sf::Vector2f vs = vSize(m_window);
 
@@ -78,36 +96,41 @@ void Menu::drawBackground() {
 
     float hScale = vs.y / 900.f;
 
-    // ─── Title ────────────────────────────────────────────────────────────
     sf::Text title;
     title.setFont(m_font);
     title.setCharacterSize(std::max(24u, static_cast<unsigned>(vs.y * 0.10f)));
     title.setFillColor(sf::Color(100, 220, 255));
     title.setOutlineColor(sf::Color(0, 0, 80));
     title.setOutlineThickness(3.f * hScale);
-    title.setString("HYDRONAUT");
+    title.setString(m_state == State::Main ? "HYDRONAUT" : "SETTINGS");
     sf::FloatRect tb = title.getLocalBounds();
     title.setOrigin(tb.width / 2.f, tb.height / 2.f);
-    title.setPosition(vs.x / 2.f, vs.y * 0.18f);
+    title.setPosition(vs.x / 2.f, vs.y * 0.20f);
     m_window.draw(title);
 
-    // ─── Subtitle ─────────────────────────────────────────────────────────
-    sf::Text sub;
-    sub.setFont(m_font);
-    sub.setCharacterSize(std::max(12u, static_cast<unsigned>(vs.y * 0.033f)));
-    sub.setFillColor(sf::Color(180, 240, 255, 200));
-    sub.setString("Navigate the deep. Survive the chaos.");
-    sf::FloatRect sb = sub.getLocalBounds();
-    sub.setOrigin(sb.width / 2.f, sb.height / 2.f);
-    sub.setPosition(vs.x / 2.f, vs.y * 0.30f);
-    m_window.draw(sub);
+    if (m_state == State::Main) {
+        sf::Text sub;
+        sub.setFont(m_font);
+        sub.setCharacterSize(std::max(16u, static_cast<unsigned>(vs.y * 0.04f)));
+        sub.setFillColor(sf::Color(255, 200, 100));
+        sub.setOutlineColor(sf::Color(80, 40, 0));
+        sub.setOutlineThickness(2.f * hScale);
+        sub.setString("Select Level");
+        sf::FloatRect sb = sub.getLocalBounds();
+        sub.setOrigin(sb.width / 2.f, sb.height / 2.f);
+        sub.setPosition(vs.x / 2.f, vs.y * 0.30f);
+        m_window.draw(sub);
+    }
 
-    // ─── Controls hint ────────────────────────────────────────────────────
     sf::Text hint;
     hint.setFont(m_font);
     hint.setCharacterSize(std::max(11u, static_cast<unsigned>(vs.y * 0.024f)));
     hint.setFillColor(sf::Color(120, 180, 220, 160));
-    hint.setString("UP/DOWN: navigate     ENTER: select     ESC in-game: return");
+    if (m_state == State::Main) {
+        hint.setString("UP/DOWN: navigate     ENTER: select     ESC in-game: return");
+    } else {
+        hint.setString("UP/DOWN: navigate   LEFT/RIGHT: adjust   ENTER: toggle/select");
+    }
     sf::FloatRect hb = hint.getLocalBounds();
     hint.setOrigin(hb.width / 2.f, hb.height / 2.f);
     hint.setPosition(vs.x / 2.f, vs.y * 0.92f);
@@ -115,31 +138,63 @@ void Menu::drawBackground() {
 }
 
 int Menu::run() {
+    auto& s = Settings::instance();
+
     while (m_window.isOpen()) {
-        // Re-layout every frame so resize is handled deterministically.
         layout();
         updateHighlight();
 
         sf::Event event;
         while (m_window.pollEvent(event)) {
-            if (event.type == sf::Event::Closed)
-                return -1;
-
+            if (event.type == sf::Event::Closed) return -1;
             if (event.type == sf::Event::Resized) {
-                // Keep logical view in sync with whatever the OS reports.
                 unsigned w = event.size.width;
                 unsigned h = event.size.height;
                 m_window.setView(sf::View(sf::FloatRect(0.f, 0.f, (float)w, (float)h)));
             }
-
             if (event.type == sf::Event::KeyPressed) {
-                if (event.key.code == sf::Keyboard::Up)
-                    m_selected = (m_selected - 1 + NUM_ITEMS) % NUM_ITEMS;
-                else if (event.key.code == sf::Keyboard::Down)
-                    m_selected = (m_selected + 1) % NUM_ITEMS;
-                else if (event.key.code == sf::Keyboard::Enter)
-                    return m_selected + 1;
+                auto code = event.key.code;
+                int& sel = (m_state == State::Main) ? m_selectedMain : m_selectedSettings;
 
+                if (code == sf::Keyboard::Up) {
+                    sel = (sel - 1 + m_numItems) % m_numItems;
+                } else if (code == sf::Keyboard::Down) {
+                    sel = (sel + 1) % m_numItems;
+                } else if (code == sf::Keyboard::Escape) {
+                    if (m_state == State::Settings) {
+                        m_state = State::Main;
+                        buildStrings();
+                    } else {
+                        return -1;
+                    }
+                } else if (code == sf::Keyboard::Left || code == sf::Keyboard::Right) {
+                    if (m_state == State::Settings && sel == 0) { // Volume
+                        float vol = s.getVolume();
+                        vol += (code == sf::Keyboard::Right) ? 10.f : -10.f;
+                        vol = std::clamp(vol, 0.f, 100.f);
+                        s.setVolume(vol);
+                        if (m_music) m_music->setVolume(s.isMuted() ? 0.f : vol);
+                        buildStrings();
+                    }
+                } else if (code == sf::Keyboard::Enter) {
+                    if (m_state == State::Main) {
+                        if (sel < 3) return sel + 1; // Level 1,2,3
+                        if (sel == 3) {
+                            m_state = State::Settings;
+                            buildStrings();
+                        }
+                    } else { // Settings
+                        if (sel == 1) { // Mute
+                            s.setMuted(!s.isMuted());
+                            if (m_music) m_music->setVolume(s.isMuted() ? 0.f : s.getVolume());
+                        } else if (sel == 2) { // Train on Play
+                            s.setTrainOnPlay(!s.isTrainOnPlay());
+                        } else if (sel == 3) { // Back
+                            m_state = State::Main;
+                        }
+                        buildStrings();
+                    }
+                }
                 updateHighlight();
             }
         }
@@ -147,7 +202,7 @@ int Menu::run() {
         m_window.clear();
         drawBackground();
         m_window.draw(m_highlight);
-        for (int i = 0; i < NUM_ITEMS; ++i)
+        for (int i = 0; i < m_numItems; ++i)
             m_window.draw(m_items[i]);
         m_window.display();
     }

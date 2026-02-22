@@ -38,17 +38,31 @@ bool Level3::update() {
     m_sec.update(winSize);
     m_expSine.update(winSize);
 
+    sf::Vector2f pC = centreOf(m_player.getBounds());
+    sf::Vector2f tC = centreOf(m_treasure.getBounds());
+    float dx = pC.x - tC.x,  dy = pC.y - tC.y;
+    float curDist = std::sqrt(dx*dx + dy*dy);
+
+    float reward = 0.15f; // survival
+    if (m_prevDistToTreasure > 0.f) reward += (m_prevDistToTreasure - curDist) * 0.50f;
+    m_prevDistToTreasure = curDist;
+
+    sf::Vector2f vel = m_player.getVelocity();
+    float speed = std::sqrt(vel.x * vel.x + vel.y * vel.y);
+    if (speed < 0.5f) reward -= 0.5f;
+
     if (m_player.getBounds().intersects(m_treasure.getBounds())) {
         m_treasure.respawn(winSize);
         addScore(10);
+        reward += 100.f; // user requested this
+        m_prevDistToTreasure = -1.f;
     }
 
-    int gs = checkGraze(m_player.getGrazeBounds(), m_player.getBounds(),
-                        m_sec.getBounds());
-    gs    += checkGraze(m_player.getGrazeBounds(), m_player.getBounds(),
-                        m_expSine.getBounds());
+    int gs = checkGraze(m_player.getGrazeBounds(), m_player.getBounds(), m_sec.getBounds());
+    gs    += checkGraze(m_player.getGrazeBounds(), m_player.getBounds(), m_expSine.getBounds());
     if (gs > 0) addScore(GRAZE_SCORE_PER_FRAME * gs);
 
+    bool died = false;
     if (!m_player.isDashing()) {
         auto& am = AssetManager::instance();
         if (pixelPerfectOverlap(m_player.getSprite(), am.image("submarine"),
@@ -56,10 +70,15 @@ bool Level3::update() {
             pixelPerfectOverlap(m_player.getSprite(), am.image("submarine"),
                                 m_expSine.getSprite(),am.image("fish")))    {
             triggerShake(SHAKE_FRAMES_DEATH, SHAKE_INTENSITY_DEATH);
-            return true;
+            reward = -200.f; // user requested this
+            died = true;
         }
     }
-    return false;
+
+    m_stepsSinceReward = (reward > 0.f) ? 0 : m_stepsSinceReward + 1;
+    m_lastReward = reward;
+
+    return died;
 }
 
 void Level3::draw() {
@@ -178,7 +197,7 @@ std::vector<float> Level3::step(int action, float& reward, bool& isDone) {
     if (m_player.getBounds().intersects(m_treasure.getBounds())) {
         m_treasure.respawn(winSize);
         addScore(10);
-        reward += 200.f;
+        reward += 100.f; // user requested +100
         m_prevDistToTreasure = -1.f;
     }
 
@@ -188,7 +207,7 @@ std::vector<float> Level3::step(int action, float& reward, bool& isDone) {
                             m_sec.getSprite(),    am.image("octopus"))  ||
         pixelPerfectOverlap(m_player.getSprite(), am.image("submarine"),
                             m_expSine.getSprite(),am.image("fish")))    {
-        reward  = -100.f;
+        reward  = -200.f; // user requested -200
         isDone  = true;
     }
 

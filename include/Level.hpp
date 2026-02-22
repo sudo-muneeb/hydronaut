@@ -102,6 +102,7 @@ private:
     void drawSonarRing();
     void drawGrazeHUD();
     void drawDebugOverlay();
+    void drawMetricsOverlay();
     void showGameOver();
     void showPauseOverlay();
 
@@ -127,5 +128,11 @@ private:
     sf::Clock    m_sonarClock;
     bool         m_sonarFired    = false;
     sf::Clock    m_sonarCooldownClock;
-    bool         m_xKeyDown      = false;
+    // ─── Metrics ──────────────────────────────────────────────────────────
+    bool      m_showMetrics = false;
+    bool      m_f4KeyDown   = false;
+    sf::Clock m_fpsMeasurementClock;
+    int       m_frameMeasurementCount = 0;
+    float     m_currentFps   = 0.f;
+    float     m_logicTimeMs  = 0.f;
 };

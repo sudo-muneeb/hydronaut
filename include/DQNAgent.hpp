@@ -3,7 +3,7 @@
 // Header-only Deep Q-Network agent using LibTorch (C++17, cxx11 ABI).
 //
 // Network architecture:
-//   Linear(12 → 128) → ReLU → Linear(128 → 128) → ReLU → Linear(128 → 4)
+//   Linear(49 → 128) → ReLU → Linear(128 → 128) → ReLU → Linear(128 → 15)
 //
 // Training:
 //   ε-greedy exploration with exponential decay.
@@ -42,7 +42,7 @@ public:
     // Hyperparameters
     static constexpr int   STATE_DIM    = 49;
     static constexpr int   HIDDEN_DIM   = 128;
-    static constexpr int   ACTION_DIM   = 4;
+    static constexpr int   ACTION_DIM   = 15; // 5 directions × 3 abilities (None, Dash, Sonar)
     static constexpr float GAMMA        = 0.99f;
     static constexpr float LR           = 1e-3f;
     static constexpr float TAU          = 0.005f;   // soft target update factor

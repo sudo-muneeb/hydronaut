@@ -36,13 +36,20 @@ bool Level1::update() {
     m_pool.update(winSize, poolSpeed);
     addScore(1);
 
+    float reward = 0.15f; // survival base
+
     if (!m_player.isDashing()) {
         if (m_pool.collidesWithPlayer(m_player.getBounds())) {
             triggerShake(SHAKE_FRAMES_DEATH, SHAKE_INTENSITY_DEATH);
-            return true;
+            reward = -200.f;  // death penalty
         }
     }
-    return false;
+
+    if (reward != 0.15f) m_stepsSinceReward = 0;
+    else                 ++m_stepsSinceReward;
+    m_lastReward = reward;
+
+    return (reward == -200.f);
 }
 
 void Level1::draw() {
@@ -115,18 +122,18 @@ std::vector<float> Level1::step(int action, float& reward, bool& isDone) {
 
     m_pool.update(winSize, m_speed);
 
-    reward = 0.1f;
+    reward = 0.15f;
     isDone = false;
 
     if (m_pool.collidesWithPlayer(m_player.getBounds())) {
-        reward = -100.f;
+        reward = -200.f;
         isDone = true;
     }
 
     addScore(1);
 
-    if (reward != 0.1f) m_stepsSinceReward = 0;
-    else                ++m_stepsSinceReward;
+    if (reward != 0.15f) m_stepsSinceReward = 0;
+    else                 ++m_stepsSinceReward;
     m_lastReward = reward;
 
     return getState();

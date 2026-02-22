@@ -10,6 +10,7 @@
 #include "Level1.hpp"
 #include "Level2.hpp"
 #include "Level3.hpp"
+#include "Settings.hpp"
 
 int main() {
     try {
@@ -39,7 +40,8 @@ int main() {
         bool musicOk = music.openFromFile(ASSET_MUSIC);
         if (musicOk) {
             music.setLoop(true);
-            music.setVolume(10.f);
+            auto& s = Settings::instance();
+            music.setVolume(s.isMuted() ? 0.f : s.getVolume());
             music.play();
         } else {
             std::cerr << "[WARNING] Music file not found: " << ASSET_MUSIC << "\n";
@@ -47,7 +49,7 @@ int main() {
 
         // ─── Main game loop ───────────────────────────────────────────────
         while (window.isOpen()) {
-            Menu menu(window);
+            Menu menu(window, musicOk ? &music : nullptr);
             int choice = menu.run();
 
             if (choice == -1 || !window.isOpen())

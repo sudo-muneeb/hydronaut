@@ -34,10 +34,12 @@ add_library(hydronaut_lib STATIC
     src/Level2.cpp
     src/Level3.cpp
     src/Menu.cpp
+    src/HumanTrainer.cpp
 )
 
 target_include_directories(hydronaut_lib PUBLIC
     ${CMAKE_SOURCE_DIR}/include
+    ${TORCH_INCLUDE_DIRS}
 )
 
 target_link_libraries(hydronaut_lib PUBLIC
@@ -45,10 +47,11 @@ target_link_libraries(hydronaut_lib PUBLIC
     sfml-window
     sfml-system
     sfml-audio
+    ${TORCH_LIBRARIES}
 )
 
 target_compile_options(hydronaut_lib PRIVATE
-    -Wall -Wextra -O2
+    -Wall -Wextra -O2 -Wno-deprecated-declarations
 )
 
 # ─── Original game executable ─────────────────────────────────────────────────
@@ -58,37 +61,12 @@ add_executable(hydronaut
 target_link_libraries(hydronaut PRIVATE hydronaut_lib)
 
 # ─── train_hydronaut — headless RL training ───────────────────────────────────
-add_executable(train_hydronaut
-    src/train.cpp
-)
-target_include_directories(train_hydronaut PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-    ${TORCH_INCLUDE_DIRS}
-)
-target_link_libraries(train_hydronaut PRIVATE
-    hydronaut_lib
-    ${TORCH_LIBRARIES}
-)
-# Suppress LibTorch's aggressive macro warnings
-target_compile_options(train_hydronaut PRIVATE
-    -O2 -Wno-deprecated-declarations
-)
+add_executable(train_hydronaut src/train.cpp)
+target_link_libraries(train_hydronaut PRIVATE hydronaut_lib)
 
 # ─── play_hydronaut — SFML inference visualiser ───────────────────────────────
-add_executable(play_hydronaut
-    src/play.cpp
-)
-target_include_directories(play_hydronaut PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-    ${TORCH_INCLUDE_DIRS}
-)
-target_link_libraries(play_hydronaut PRIVATE
-    hydronaut_lib
-    ${TORCH_LIBRARIES}
-)
-target_compile_options(play_hydronaut PRIVATE
-    -O2 -Wno-deprecated-declarations
-)
+add_executable(play_hydronaut src/play.cpp)
+target_link_libraries(play_hydronaut PRIVATE hydronaut_lib)
 
 # ─── RPATH: embed LibTorch shared-lib path so binaries find libtorch at runtime ─
 # This means you do NOT need LD_LIBRARY_PATH when running from the build dir.

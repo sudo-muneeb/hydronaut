@@ -21,6 +21,11 @@ Level2::Level2(sf::RenderWindow& window)
 {
 }
 
+// ─── RL Environment API Helper ──────────────────────────────────────────────────
+static auto centreOf = [](sf::FloatRect b) -> sf::Vector2f {
+    return { b.left + b.width * 0.5f, b.top + b.height * 0.5f };
+};
+
 // ─── Normal gameplay update ───────────────────────────────────────────────────
 bool Level2::update() {
     auto  winSize = m_window.getSize();
@@ -28,9 +33,12 @@ bool Level2::update() {
     float sonar   = getSonarFactor();
 
     // Human input → same command interface as RL
-    int  action      = InputHandler::pollAction();
-    bool dashRequest = InputHandler::isDashPressed();
-    bool dashed      = m_player.applyCommand(action, dashRequest);
+    int  compositeAction = InputHandler::pollCompositeAction();
+    int  baseDir;
+    bool dashRequest, sonarReq;
+    InputHandler::decodeAction(compositeAction, baseDir, dashRequest, sonarReq);
+
+    bool dashed = m_player.applyCommand(baseDir, dashRequest);
     m_player.update(dt);
     if (dashed) triggerShake(DASH_SHAKE_FRAMES, DASH_SHAKE_INTENSITY);
 
@@ -101,10 +109,6 @@ void Level2::draw() {
 }
 
 // ─── RL Environment API ───────────────────────────────────────────────────────
-static auto centreOf = [](sf::FloatRect b) -> sf::Vector2f {
-    return { b.left + b.width * 0.5f, b.top + b.height * 0.5f };
-};
-
 std::vector<float> Level2::getState() const {
     auto winSize = m_window.getSize();
     float wf = static_cast<float>(winSize.x ? winSize.x : 1);
@@ -145,6 +149,12 @@ std::vector<float> Level2::getState() const {
     s[19] = 1.f / NUM_OBJ_TYPES;
     s[20] = std::clamp(tC.x / wf, 0.f, 1.f);
     s[21] = std::clamp(tC.y / hf, 0.f, 1.f);
+
+    // ─── Ability readiness signals (so the AI can learn WHEN to use them) ────
+    // s[47] = 1 if Hydro-Dash is off cooldown, 0 otherwise
+    // s[48] = 1 if Sonar Pulse is off cooldown, 0 otherwise
+    s[47] = m_player.dashAvailable() ? 1.f : 0.f;
+    s[48] = isSonarReady() ? 1.f : 0.f;
 
     return s;
 }

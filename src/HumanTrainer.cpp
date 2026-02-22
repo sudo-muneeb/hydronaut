@@ -45,15 +45,15 @@ void HumanTrainer::recordExperience(
     const std::vector<float>& next_state,
     bool done
 ) {
-    if (action < 0 || action > 4) return; // Ignore invalid actions (like dash only)
+    if (action < 0 || action > 14) return; // Ignore invalid actions
 
     initIfNeeded();
 
-    m_buffer->push(state, action, reward, next_state, done);
+    m_buffer->push({state, action, reward, next_state, done});
     m_frameCount++;
 
     if (m_buffer->size() > WARMUP_EXP && (m_frameCount % LEARN_EVERY == 0)) {
-        m_agent->learn(*m_buffer);
+        m_agent->learn(m_buffer->sample(WARMUP_EXP));
     }
 
     if (done || (m_frameCount % SAVE_EVERY == 0)) {

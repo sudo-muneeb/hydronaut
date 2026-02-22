@@ -36,7 +36,7 @@ void ExpSineObstacle::update(sf::Vector2u windowSize) noexcept {
     float prevY   = expSineY(m_x, windowSize);
     bool  wrapped = false;
 
-    m_x -= 3.f * m_speedMult;
+    m_x -= 4.5f * m_speedMult;
     if (m_x < 0) {
         float rangeX = windowSize.x * 0.5f;
         m_x = windowSize.x * 0.5f +

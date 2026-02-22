@@ -37,7 +37,7 @@ void SineObstacle::update(sf::Vector2u windowSize) noexcept {
     float prevX = m_x;
     float prevY = sineY(m_x, windowSize);
 
-    m_x -= 3.f * m_speedMult;
+    m_x -= 4.5f * m_speedMult;
     if (m_x < 0 && windowSize.x > 0) {
         float rangeX = windowSize.x * 0.5f;
         m_x = windowSize.x * 0.5f +

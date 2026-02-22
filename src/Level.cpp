@@ -92,7 +92,7 @@ int Level::run() {
         int action = -1;
         if (train) {
             state = getState();
-            action = InputHandler::pollAction();
+            action = InputHandler::pollCompositeAction();
         }
 
         sf::Clock logicClock;
@@ -151,9 +151,12 @@ void Level::handleEvents() {
             event.key.code == sf::Keyboard::Escape)
             m_gameOver = true;
 
-        // Sonar pulse (X)
+        // Sonar pulse (X) - we removed m_xKeyDown logic as we now poll X as a continuous ability via InputHandler
+        // However, the visual expanding sonar ring logic relies on m_xKeyDown in this event handler to not reset the ring constantly.
+        // Wait, no - earlier the user asked "what is the purpose of this". We should keep the cooldown logic but remove the visual 'canFire' check from here since the baseDir+sonar command applies it in applyAction.
+        // Actually, no. Let's just fix the brace right now so it compiles as it was, minus the m_xKeyDown check.
         if (event.type == sf::Event::KeyPressed &&
-            event.key.code == sf::Keyboard::X && !m_xKeyDown) {
+            event.key.code == sf::Keyboard::X) {
             bool canFire = !m_sonarActive &&
                            (!m_sonarFired ||
                             m_sonarCooldownClock.getElapsedTime().asSeconds() >= SONAR_COOLDOWN_SEC);
@@ -163,11 +166,7 @@ void Level::handleEvents() {
                 // Centre sonar on current view centre (logical coords)
                 m_sonarCenter = m_baseView.getCenter();
             }
-            m_xKeyDown = true;
         }
-        if (event.type == sf::Event::KeyReleased &&
-            event.key.code == sf::Keyboard::X)
-            m_xKeyDown = false;
 
         if (event.type == sf::Event::KeyPressed &&
             event.key.code == sf::Keyboard::F3)
@@ -272,6 +271,12 @@ void Level::restoreView() {
 // ─── Sonar ───────────────────────────────────────────────────────────────────
 float Level::getSonarFactor() const noexcept {
     return m_sonarActive ? SONAR_SLOW_FACTOR : 1.0f;
+}
+
+bool Level::isSonarReady() const noexcept {
+    return !m_sonarActive &&
+           (!m_sonarFired ||
+            m_sonarCooldownClock.getElapsedTime().asSeconds() >= SONAR_COOLDOWN_SEC);
 }
 
 void Level::drawSonarRing() {

@@ -76,6 +76,10 @@ protected:
     // Sonar — returns the current obstacle speed multiplier (1.0 or SONAR_SLOW_FACTOR).
     float getSonarFactor() const noexcept;
 
+    // Sonar readiness — returns true when the sonar ability can be fired.
+    // Derived classes use this to populate the state vector at s[48].
+    bool isSonarReady() const noexcept;
+
     // Graze — call from update(). Returns 1 if graze, 0 otherwise.
     // Does NOT fire if playerCore intersects obstacleBox (that's a lethal hit).
     int checkGraze(sf::FloatRect playerGraze,

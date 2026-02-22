@@ -22,9 +22,12 @@ bool Level1::update() {
     float dt     = 1.f / 60.f;
 
     // Poll input via InputHandler (UI-only path — not called from RL step()).
-    int  action       = InputHandler::pollAction();
-    bool dashRequest  = InputHandler::isDashPressed();
-    bool dashed       = m_player.applyCommand(action, dashRequest);
+    int  compositeAction = InputHandler::pollCompositeAction();
+    int  baseDir;
+    bool dashRequest, sonarReq;
+    InputHandler::decodeAction(compositeAction, baseDir, dashRequest, sonarReq);
+
+    bool dashed = m_player.applyCommand(baseDir, dashRequest);
     m_player.update(dt);
     if (dashed) triggerShake(DASH_SHAKE_FRAMES, DASH_SHAKE_INTENSITY);
 
@@ -94,6 +97,11 @@ std::vector<float> Level1::getState() const {
         s[base + 3] = std::clamp(snap.velocity.x / MAX_VEL, -1.f, 1.f);
         s[base + 4] = std::clamp(snap.velocity.y / MAX_VEL, -1.f, 1.f);
     }
+
+    // ─── Ability readiness signals ───────────────────────────────────────────
+    s[47] = m_player.dashAvailable() ? 1.f : 0.f;
+    s[48] = isSonarReady() ? 1.f : 0.f;
+
     return s;
 }
 

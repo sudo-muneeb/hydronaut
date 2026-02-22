@@ -30,7 +30,7 @@ constexpr int   SHAKE_FRAMES_DEATH    = 10;
 constexpr int HIT_STOP_MS = 500;
 
 // ─── Gameplay tuning ──────────────────────────────────────────────────────────
-constexpr int   INITIAL_OBSTACLE_SPEED  = 4;
+constexpr int   INITIAL_OBSTACLE_SPEED  = 6;
 constexpr float OBSTACLE_SPAWN_CHANCE   = 50.f;
 constexpr int   SCORE_SPEED_THRESHOLD   = 500;
 constexpr float SCORE_SPEED_EXPONENT    = 1.3f;

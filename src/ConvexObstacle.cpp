@@ -18,7 +18,7 @@ void ConvexObstacle::reset(sf::Vector2u windowSize) {
     if (windowSize.x == 0 || windowSize.y == 0)
         throw std::invalid_argument("ConvexObstacle: window size must be non-zero");
 
-    float size = std::min(windowSize.x, windowSize.y) * OBS_SIZE_FACTOR * 5.f;
+    float size = std::min(windowSize.x, windowSize.y) * OBS_SIZE_FACTOR * 2.5f;
 
     m_shape.setPointCount(3);
     m_shape.setPoint(0, sf::Vector2f(0, 0));

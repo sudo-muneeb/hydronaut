@@ -36,9 +36,12 @@ int main(int argc, char* argv[]) {
     }
 
     try {
-        // ── Window ────────────────────────────────────────────────────────────
+        // ── Window at full desktop resolution ─────────────────────────────────
+        // The window always tracks the actual screen — no hardcoded dimensions.
+        sf::VideoMode desktop = sf::VideoMode::getDesktopMode();
+
         sf::RenderWindow window(
-            sf::VideoMode(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT),
+            desktop,
             "Hydronaut — AI Play  (Level " + std::to_string(levelChoice) + ")",
             sf::Style::Default);
         window.setFramerateLimit(60);
@@ -50,7 +53,7 @@ int main(int argc, char* argv[]) {
             music.setLoop(true); music.setVolume(10.f); music.play();
         }
 
-        // ── Build level (training mode OFF → full SFML rendering via renderFrame) ─
+        // ── Build level ──────────────────────────────────────────────────────
         std::unique_ptr<Level> env;
         switch (levelChoice) {
             case 1:  env = std::make_unique<Level1>(window); break;
@@ -59,20 +62,17 @@ int main(int argc, char* argv[]) {
         }
         env->setTrainingMode(false);
 
-        // ── Load trained model ────────────────────────────────────────────────
+        // ── Load trained model ───────────────────────────────────────────────
         DQNAgent agent;
         agent.load_model(MODEL_PATH);
-        agent.setEpsilon(0.0f);  // pure exploitation
+        agent.setEpsilon(0.0f);
 
         std::cout << "[play] Level " << levelChoice
                   << " | State dim: " << DQNAgent::STATE_DIM
                   << " | Action hold: " << HOLD_MIN << "-" << HOLD_MAX << " frames\n"
                   << "       ESC or close window to quit.\n\n";
 
-        // winSize is read per-episode from the actual OS window — do NOT
-        // hardcode 1920×1080 here or sprites spawn off-screen.
-
-        // RNG for hold duration (mirrors training distribution)
+        // RNG for hold duration
         std::mt19937 rng(std::random_device{}());
         std::uniform_int_distribution<int> holdDist(HOLD_MIN, HOLD_MAX);
 
@@ -81,7 +81,8 @@ int main(int argc, char* argv[]) {
 
         while (window.isOpen()) {
             ++episodeCount;
-            const sf::Vector2u winSize = window.getSize(); // actual OS window
+            // Always read the current window size per episode — adapts to any resize.
+            const sf::Vector2u winSize = window.getSize();
             env->setVirtualSize(winSize);
             std::vector<float> state = env->reset(winSize);
 
@@ -101,15 +102,15 @@ int main(int argc, char* argv[]) {
                         window.close();
                     }
                     if (event.type == sf::Event::Resized) {
-                        unsigned w = std::max(event.size.width, 640u);
-                        unsigned h = std::max(event.size.height, 480u);
-                        window.setSize({w, h});
+                        // Keep view in sync with actual window size — no clamping
+                        unsigned w = event.size.width;
+                        unsigned h = event.size.height;
                         env->setVirtualSize({w, h});
                     }
                 }
                 if (!window.isOpen()) break;
 
-                // ── Human-paced decision ──────────────────────────────────────
+                // ── Human-paced decision ────────────────────────────────────
                 if (holdRemaining == 0) {
                     currentAction = agent.choose_action(state);
                     holdRemaining = holdDist(rng);
@@ -117,25 +118,14 @@ int main(int argc, char* argv[]) {
                 }
                 --holdRemaining;
 
-                // ── Step environment (RL physics path) ────────────────────────
+                // ── Step environment ────────────────────────────────────────
                 float reward = 0.f;
                 bool  done   = false;
                 state = env->step(currentAction, reward, done);
                 totalReward += reward;
                 ++frameCount;
 
-                // ── Render the REAL game via Level::renderFrame() ─────────────
-                // This draws background + all sprites (submarine, obstacles,
-                // treasure) + sonar ring + level HUD — exactly as in normal play.
                 env->renderFrame();
-
-                // ── AI overlay on top (drawn AFTER renderFrame's display? No —
-                //    we need to draw BEFORE display).  Use a secondary draw pass
-                //    directly to window after renderFrame() calls display().
-                // Simple workaround: draw overlay text on next frame start.
-                // Better: expose a post-render hook.  For now the level HUD
-                // already shows score; we just add a small AI status bar.
-                // (renderFrame calls display() internally, so overlay comes next frame)
 
                 if (done) {
                     std::cout << "Episode " << episodeCount

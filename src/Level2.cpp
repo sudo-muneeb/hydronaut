@@ -1,11 +1,12 @@
 #include "Level2.hpp"
 #include "Constants.hpp"
+#include "InputHandler.hpp"
 #include "SpriteBounds.hpp"
 #include "AssetManager.hpp"
 #include <algorithm>
 #include <cmath>
 
-static constexpr int   MAX_OBJ_SLOTS = 8;
+// ─── State vector constants ───────────────────────────────────────────────────
 static constexpr int   NUM_OBJ_TYPES = 6;
 static constexpr float MAX_VEL       = 10.f;
 static constexpr float REF_W         = 1920.f;
@@ -26,7 +27,10 @@ bool Level2::update() {
     float dt      = 1.f / 60.f;
     float sonar   = getSonarFactor();
 
-    bool dashed = m_player.handleInput(winSize);
+    // Human input → same command interface as RL
+    int  action      = InputHandler::pollAction();
+    bool dashRequest = InputHandler::isDashPressed();
+    bool dashed      = m_player.applyCommand(action, dashRequest);
     m_player.update(dt);
     if (dashed) triggerShake(DASH_SHAKE_FRAMES, DASH_SHAKE_INTENSITY);
 
@@ -67,8 +71,7 @@ void Level2::draw() {
 
     if (m_debugMode) {
         auto& am = AssetManager::instance();
-        // Draw PIXEL-ACCURATE collision hulls (green = player, red = obstacle)
-        m_player.drawDebugHitboxes(m_window);   // inner lethal rect
+        m_player.drawDebugHitboxes(m_window);
         drawDebugHull(m_window, m_player.getSprite(), am.hullUV("submarine"),
                       sf::Color(80, 255, 80, 220));
         drawDebugHull(m_window, m_sine.getSprite(),   am.hullUV("urchin"),
@@ -138,10 +141,11 @@ std::vector<float> Level2::reset(sf::Vector2u windowSize) {
 }
 
 std::vector<float> Level2::step(int action, float& reward, bool& isDone) {
-    auto  winSize = getSimSize();           // virtual size for multi-screen training
+    auto  winSize = getSimSize();
     float dt      = 1.f / 60.f;
 
-    applyAction(m_player, action);
+    // RL path: no dash (action 4 = None if agent doesn't move, dash=false).
+    m_player.applyCommand(action, false);
     m_player.setWindowSize(winSize);
     m_player.update(dt);
     m_sine.update(winSize);
@@ -149,7 +153,6 @@ std::vector<float> Level2::step(int action, float& reward, bool& isDone) {
 
     isDone = false;
 
-    // ── Distance-to-treasure shaping ──────────────────────────────────────────
     sf::Vector2f pC = centreOf(m_player.getBounds());
     sf::Vector2f tC = centreOf(m_treasure.getBounds());
     float dx = pC.x - tC.x,  dy = pC.y - tC.y;
@@ -157,21 +160,18 @@ std::vector<float> Level2::step(int action, float& reward, bool& isDone) {
 
     float approach = 0.f;
     if (m_prevDistToTreasure > 0.f)
-        approach = (m_prevDistToTreasure - curDist) * 0.10f;  // +ve = closer
+        approach = (m_prevDistToTreasure - curDist) * 0.10f;
     m_prevDistToTreasure = curDist;
 
-    // Base: approach bonus - step penalty (forces active treasure chasing)
     reward = approach - 0.05f;
 
-    // ── Treasure collected ────────────────────────────────────────────────
     if (m_player.getBounds().intersects(m_treasure.getBounds())) {
         m_treasure.respawn(winSize);
         addScore(10);
         reward += 100.f;
-        m_prevDistToTreasure = -1.f;  // reset shaping for new treasure position
+        m_prevDistToTreasure = -1.f;
     }
 
-    // ── Lethal collision ───────────────────────────────────────────────────
     auto& am = AssetManager::instance();
     if (pixelPerfectOverlap(m_player.getSprite(), am.image("submarine"),
                             m_sine.getSprite(),   am.image("urchin"))   ||

@@ -1,11 +1,12 @@
 #include "Level3.hpp"
 #include "Constants.hpp"
+#include "InputHandler.hpp"
 #include "SpriteBounds.hpp"
 #include "AssetManager.hpp"
 #include <algorithm>
 #include <cmath>
 
-static constexpr int   MAX_OBJ_SLOTS = 8;
+// ─── State vector constants ───────────────────────────────────────────────────
 static constexpr int   NUM_OBJ_TYPES = 6;
 static constexpr float MAX_VEL       = 10.f;
 static constexpr float REF_W         = 1920.f;
@@ -26,7 +27,9 @@ bool Level3::update() {
     float dt      = 1.f / 60.f;
     float sonar   = getSonarFactor();
 
-    bool dashed = m_player.handleInput(winSize);
+    int  action      = InputHandler::pollAction();
+    bool dashRequest = InputHandler::isDashPressed();
+    bool dashed      = m_player.applyCommand(action, dashRequest);
     m_player.update(dt);
     if (dashed) triggerShake(DASH_SHAKE_FRAMES, DASH_SHAKE_INTENSITY);
 
@@ -133,15 +136,15 @@ std::vector<float> Level3::reset(sf::Vector2u windowSize) {
     m_expSine.reset(windowSize);
     m_treasure.respawn(windowSize);
     m_gameOver = false;
-    m_prevDistToTreasure = -1.f;   // will be computed on first step()
+    m_prevDistToTreasure = -1.f;
     return getState();
 }
 
 std::vector<float> Level3::step(int action, float& reward, bool& isDone) {
-    auto  winSize = getSimSize();           // virtual size for multi-screen training
+    auto  winSize = getSimSize();
     float dt      = 1.f / 60.f;
 
-    applyAction(m_player, action);
+    m_player.applyCommand(action, false);
     m_player.setWindowSize(winSize);
     m_player.update(dt);
     m_sec.update(winSize);
@@ -149,7 +152,6 @@ std::vector<float> Level3::step(int action, float& reward, bool& isDone) {
 
     isDone = false;
 
-    // ── Distance-to-treasure shaping ──────────────────────────────────────────
     sf::Vector2f pC = centreOf(m_player.getBounds());
     sf::Vector2f tC = centreOf(m_treasure.getBounds());
     float dx = pC.x - tC.x,  dy = pC.y - tC.y;
@@ -162,7 +164,6 @@ std::vector<float> Level3::step(int action, float& reward, bool& isDone) {
 
     reward = approach - 0.05f;
 
-    // ── Treasure collected ────────────────────────────────────────────────
     if (m_player.getBounds().intersects(m_treasure.getBounds())) {
         m_treasure.respawn(winSize);
         addScore(10);
@@ -170,7 +171,6 @@ std::vector<float> Level3::step(int action, float& reward, bool& isDone) {
         m_prevDistToTreasure = -1.f;
     }
 
-    // ── Lethal collision ───────────────────────────────────────────────────
     auto& am = AssetManager::instance();
     if (pixelPerfectOverlap(m_player.getSprite(), am.image("submarine"),
                             m_sec.getSprite(),    am.image("octopus"))  ||

@@ -13,22 +13,28 @@
 
 int main() {
     try {
-        // ─── Window ───────────────────────────────────────────────────────
+        // ─── Window at full desktop resolution ────────────────────────────
+        // Use the actual screen size at runtime so the game always fills the
+        // display on any monitor without hardcoded dimensions.
+        sf::VideoMode desktop = sf::VideoMode::getDesktopMode();
+
         sf::RenderWindow window(
-            sf::VideoMode(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT),
+            desktop,
             "Hydronaut",
-            sf::Style::Default  // resizable
+            sf::Style::Default   // resizable, decorated
         );
         window.setFramerateLimit(60);
+
+        // Set the logical view to match the physical window exactly.
         window.setView(sf::View(sf::FloatRect(
             0.f, 0.f,
-            static_cast<float>(DEFAULT_WINDOW_WIDTH),
-            static_cast<float>(DEFAULT_WINDOW_HEIGHT))));
+            static_cast<float>(desktop.width),
+            static_cast<float>(desktop.height))));
 
-        // ─── Assets (throws on missing file) ──────────────────────────────
+        // ─── Assets ───────────────────────────────────────────────────────
         AssetManager::instance().loadAll();
 
-        // ─── Background music (non-fatal if missing) ──────────────────────
+        // ─── Background music ─────────────────────────────────────────────
         sf::Music music;
         bool musicOk = music.openFromFile(ASSET_MUSIC);
         if (musicOk) {
@@ -55,13 +61,11 @@ int main() {
                 default: break;
             }
 
-            // Per-level guard: a level crash returns to menu instead of dying
             if (level) {
                 try {
                     level->run();
                 } catch (const std::exception& e) {
                     std::cerr << "[ERROR] Level crashed: " << e.what() << "\n";
-                    // Continue — show menu again
                 }
             }
         }

@@ -1,12 +1,13 @@
 #include "Level1.hpp"
 #include "Constants.hpp"
+#include "InputHandler.hpp"
 #include <algorithm>
 #include <cmath>
 
 // ─── Shared getState() constants ─────────────────────────────────────────────
-static constexpr int   MAX_OBJ_SLOTS  = 8;   // object slots in state vector
-static constexpr int   NUM_OBJ_TYPES  = 6;   // type IDs 1-6 (0 = empty)
-static constexpr float MAX_VEL        = 10.f; // px/frame cap for normalisation
+static constexpr int   MAX_OBJ_SLOTS  = 8;    // object slots in state vector
+static constexpr int   NUM_OBJ_TYPES  = 6;    // type IDs 1-6 (0 = empty)
+static constexpr float MAX_VEL        = 10.f;
 static constexpr float REF_W          = 1920.f;
 static constexpr float REF_H          = 1080.f;
 
@@ -20,7 +21,10 @@ bool Level1::update() {
     auto winSize = m_window.getSize();
     float dt     = 1.f / 60.f;
 
-    bool dashed = m_player.handleInput(winSize);
+    // Poll input via InputHandler (UI-only path — not called from RL step()).
+    int  action       = InputHandler::pollAction();
+    bool dashRequest  = InputHandler::isDashPressed();
+    bool dashed       = m_player.applyCommand(action, dashRequest);
     m_player.update(dt);
     if (dashed) triggerShake(DASH_SHAKE_FRAMES, DASH_SHAKE_INTENSITY);
 
@@ -51,11 +55,6 @@ void Level1::draw() {
 }
 
 // ─── RL Environment API ───────────────────────────────────────────────────────
-// Generic 49-element state:
-//   [0..8]   Header  (level, screen, player pos+vel, reward timing)
-//   [9..48]  8 × 5  Object slots (type_id, x, y, vx, vy)
-//
-// Level 1: type 2 = convex triangle; no treasure; slots padded with zeros.
 std::vector<float> Level1::getState() const {
     auto winSize = m_window.getSize();
     float wf = static_cast<float>(winSize.x ? winSize.x : 1);
@@ -66,25 +65,23 @@ std::vector<float> Level1::getState() const {
 
     std::vector<float> s(49, 0.f);
 
-    // ── Header ────────────────────────────────────────────────────────────────
-    s[0] = 0.0f;                                             // level_id
-    s[1] = std::clamp(wf / REF_W, 0.f, 1.f);               // win_w_norm
-    s[2] = std::clamp(hf / REF_H, 0.f, 1.f);               // win_h_norm
-    s[3] = std::clamp(ppos.x / wf, 0.f, 1.f);              // player_x
-    s[4] = std::clamp(ppos.y / hf, 0.f, 1.f);              // player_y
-    s[5] = std::clamp(pvel.x / PLAYER_MAX_SPEED, -1.f, 1.f); // player_vx
-    s[6] = std::clamp(pvel.y / PLAYER_MAX_SPEED, -1.f, 1.f); // player_vy
+    s[0] = 0.0f;
+    s[1] = std::clamp(wf / REF_W, 0.f, 1.f);
+    s[2] = std::clamp(hf / REF_H, 0.f, 1.f);
+    s[3] = std::clamp(ppos.x / wf, 0.f, 1.f);
+    s[4] = std::clamp(ppos.y / hf, 0.f, 1.f);
+    s[5] = std::clamp(pvel.x / PLAYER_MAX_SPEED, -1.f, 1.f);
+    s[6] = std::clamp(pvel.y / PLAYER_MAX_SPEED, -1.f, 1.f);
     s[7] = std::clamp(static_cast<float>(m_stepsSinceReward) / 300.f, 0.f, 1.f);
     s[8] = std::clamp(m_lastReward / 100.f, -1.f, 1.f);
 
-    // ── Object slots — 8 nearest convex triangles (type 2) ───────────────────
     auto snaps = m_pool.getSnapshots(ppos, MAX_OBJ_SLOTS);
     for (int i = 0; i < MAX_OBJ_SLOTS; ++i) {
         int base = 9 + i * 5;
         const auto& snap = snaps[i];
         bool empty = (snap.center.x == 0.f && snap.center.y == 0.f &&
                       snap.velocity.x == 0.f && snap.velocity.y == 0.f);
-        s[base + 0] = empty ? 0.f : 2.f / NUM_OBJ_TYPES;       // type id
+        s[base + 0] = empty ? 0.f : 2.f / NUM_OBJ_TYPES;
         s[base + 1] = std::clamp(snap.center.x   / wf, 0.f, 1.f);
         s[base + 2] = std::clamp(snap.center.y   / hf, 0.f, 1.f);
         s[base + 3] = std::clamp(snap.velocity.x / MAX_VEL, -1.f, 1.f);
@@ -106,7 +103,8 @@ std::vector<float> Level1::step(int action, float& reward, bool& isDone) {
     auto winSize = m_window.getSize();
     float dt     = 1.f / 60.f;
 
-    applyAction(m_player, action);
+    // RL path: applyCommand with action enum (no dash in RL — action 4 = None).
+    m_player.applyCommand(action, false);
     m_player.update(dt);
 
     if (getScore() < SCORE_SPEED_THRESHOLD)
@@ -125,7 +123,6 @@ std::vector<float> Level1::step(int action, float& reward, bool& isDone) {
 
     addScore(1);
 
-    // Track reward timing
     if (reward != 0.1f) m_stepsSinceReward = 0;
     else                ++m_stepsSinceReward;
     m_lastReward = reward;

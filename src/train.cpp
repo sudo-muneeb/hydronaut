@@ -46,18 +46,13 @@ int main(int argc, char* argv[]) {
         // initialise without triggering divide-by-tiny in trig functions.
         // setVisible(false) keeps it off-screen.
         sf::RenderWindow window(
-            sf::VideoMode(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT),
+            sf::VideoMode(1920, 1080),
             "Training", sf::Style::None);
         window.setVisible(false);
 
         AssetManager::instance().loadAll();
         std::cout << "[train] Assets loaded.\n";
         std::cout << "[train] State dim : " << DQNAgent::STATE_DIM << "\n";
-        std::cout << "[train] Action dim: " << agent.getActionDim() << "\n";
-        std::cout << "[train] Action hold: " << HOLD_MIN << "-" << HOLD_MAX
-                  << " frames (~" << (60/HOLD_MAX) << "-" << (60/HOLD_MIN)
-                  << " Hz, human-paced)\n";
-        std::cout << "[train] Multi-screen: 640x480 to 1920x1080 randomisation\n\n";
 
         // ── Levels ────────────────────────────────────────────────────────────
         Level1 lvl1(window); lvl1.setTrainingMode(true);
@@ -65,13 +60,21 @@ int main(int argc, char* argv[]) {
         Level3 lvl3(window); lvl3.setTrainingMode(true);
 
         std::array<Level*, 3> levels{ &lvl1, &lvl2, &lvl3 };
-        lvl1.reset(trainSize);
-        lvl2.reset(trainSize);
-        lvl3.reset(trainSize);
 
         // ── RL components ─────────────────────────────────────────────────────
         ReplayBuffer buffer(50'000);
         DQNAgent     agent;
+
+        std::cout << "[train] Action hold: " << HOLD_MIN << "-" << HOLD_MAX
+                  << " frames (~" << (60/HOLD_MAX) << "-" << (60/HOLD_MIN)
+                  << " Hz, human-paced)\n";
+        std::cout << "[train] Multi-screen: 640x480 to 1920x1080 randomisation\n\n";
+
+        // Initial reset with a fixed large size; each episode randomises.
+        sf::Vector2u trainSize(1920u, 1080u);
+        lvl1.reset(trainSize);
+        lvl2.reset(trainSize);
+        lvl3.reset(trainSize);
 
         // RNG for action hold duration and screen sizes
         std::mt19937 rng(std::random_device{}());

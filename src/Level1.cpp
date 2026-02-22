@@ -73,7 +73,7 @@ std::vector<float> Level1::getState() const {
     sf::Vector2f ppos = m_player.getPosition();
     sf::Vector2f pvel = m_player.getVelocity();
 
-    std::vector<float> s(49, 0.f);
+    std::vector<float> s(50, 0.f);
 
     s[0] = 0.0f;
     s[1] = std::clamp(wf / REF_W, 0.f, 1.f);
@@ -99,8 +99,10 @@ std::vector<float> Level1::getState() const {
     }
 
     // ─── Ability readiness signals ───────────────────────────────────────────
+    // ─── Ability readiness signals ───────────────────────────────────────────
     s[47] = m_player.dashAvailable() ? 1.f : 0.f;
     s[48] = isSonarReady() ? 1.f : 0.f;
+    s[49] = std::min(1.0f, static_cast<float>(m_idleFrames) / 100.0f);
 
     return s;
 }
@@ -132,6 +134,20 @@ std::vector<float> Level1::step(int action, float& reward, bool& isDone) {
 
     reward = 0.15f;
     isDone = false;
+
+    // ── Idleness penalty ──────────────────────────────────────────────
+    sf::Vector2f vel = m_player.getVelocity();
+    float speed = std::sqrt(vel.x * vel.x + vel.y * vel.y);
+    if (speed < 0.5f) {
+        m_idleFrames++;
+    } else {
+        m_idleFrames = 0;
+    }
+
+    if (m_idleFrames > 100) {
+        reward -= 50.0f;
+        isDone = true;
+    }
 
     if (m_pool.collidesWithPlayer(m_player.getBounds())) {
         reward = -200.f;

@@ -10,31 +10,11 @@ echo "════════════════════════�
 echo "  Building Hydronaut"
 echo "═══════════════════════════════════════"
 
-g++ \
-  "$SRC/main.cpp"             \
-  "$SRC/AssetManager.cpp"     \
-  "$SRC/Player.cpp"           \
-  "$SRC/Particle.cpp"         \
-  "$SRC/ConvexObstacle.cpp"   \
-  "$SRC/SineObstacle.cpp"     \
-  "$SRC/ParabolicObstacle.cpp"\
-  "$SRC/SecObstacle.cpp"      \
-  "$SRC/ExpSineObstacle.cpp"  \
-  "$SRC/Treasure.cpp"         \
-  "$SRC/Level.cpp"            \
-  "$SRC/Level1.cpp"           \
-  "$SRC/Level2.cpp"           \
-  "$SRC/Level3.cpp"           \
-  "$SRC/Menu.cpp"             \
-  -I"$INC"                    \
-  -o "$OUT"                   \
-  -lsfml-graphics             \
-  -lsfml-window               \
-  -lsfml-system               \
-  -lsfml-audio                \
-  -std=c++17                  \
-  -Wall -Wextra               \
-  -O2
+mkdir -p build
+  cd build
+  cmake -DCMAKE_PREFIX_PATH="$ROOT/libtorch" ..
+  make hydronaut -j$(nproc)
+  cp hydronaut "$OUT"
 
 echo "Build successful → $OUT"
 echo ""

@@ -68,6 +68,7 @@ protected:
     void resetScore()             noexcept {
         m_score = 0; m_grazeAcc = 0;
         m_stepsSinceReward = 0; m_lastReward = 0.f;
+        m_idleFrames = 0;
     }
 
     // Screen shake — trigger this when the player dashes or hits something.
@@ -93,6 +94,7 @@ protected:
     // RL reward-timing state (updated by each level's step())
     int   m_stepsSinceReward = 0;   // frames elapsed since last non-zero reward
     float m_lastReward       = 0.f; // reward value from the most recent step
+    int   m_idleFrames       = 0;   // frames elapsed since last moving >= 0.5f
 
     sf::RenderWindow& m_window;
     bool              m_paused      = false;

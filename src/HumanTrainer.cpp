@@ -26,8 +26,12 @@ void HumanTrainer::initIfNeeded() {
 
     // Try to load user's existing trained weights
     if (std::filesystem::exists(MODEL_PATH)) {
-        m_agent->load_model(MODEL_PATH);
-        std::cout << "[HumanTrainer] Loaded existing model: " << MODEL_PATH << "\n";
+        try {
+            m_agent->load_model(MODEL_PATH);
+            std::cout << "[HumanTrainer] Loaded existing model: " << MODEL_PATH << "\n";
+        } catch (const std::exception& e) {
+            std::cerr << "[HumanTrainer] Warning: Failed to load model (likely dimension mismatch). Starting fresh.\n";
+        }
     } else {
         std::cout << "[HumanTrainer] No existing model found. Will train from scratch.\n";
     }

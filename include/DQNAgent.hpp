@@ -40,15 +40,15 @@ TORCH_MODULE(DQNNet);   // creates shared_ptr wrapper "DQNNet"
 class DQNAgent {
 public:
     // Hyperparameters
-    static constexpr int   STATE_DIM    = 49;
+    static constexpr int   STATE_DIM    = 50;
     static constexpr int   HIDDEN_DIM   = 128;
     static constexpr int   ACTION_DIM   = 15; // 5 directions × 3 abilities (None, Dash, Sonar)
     static constexpr float GAMMA        = 0.99f;
     static constexpr float LR           = 1e-3f;
     static constexpr float TAU          = 0.005f;   // soft target update factor
     static constexpr float EPS_START    = 1.0f;
-    static constexpr float EPS_END      = 0.05f;
-    static constexpr float EPS_DECAY    = 0.9995f;  // per learn() call
+    static constexpr float EPS_END      = 0.08f;   // slightly higher floor for 15-action space
+    static constexpr float EPS_DECAY    = 0.9999f; // much slower decay — was 0.9995 with 4 actions
     static constexpr int   BATCH_SIZE   = 64;
 
     DQNAgent()
@@ -144,15 +144,23 @@ public:
 
         // Soft target network update
         softUpdateTarget();
+    }
 
-        // Epsilon decay
+    // decay eps per ep instead of per step
+    void decay_epsilon() {
         m_epsilon = std::max(EPS_END, m_epsilon * EPS_DECAY);
     }
 
+
     // ── Model persistence ─────────────────────────────────────────────────────
     void save_model(const std::string& path) {
-        torch::save(m_onlineNet, path);
-        std::cout << "[DQNAgent] Model saved to: " << path << "\n";
+        std::string tmp_path = path + ".tmp";
+        torch::save(m_onlineNet, tmp_path);
+        if (std::rename(tmp_path.c_str(), path.c_str()) != 0) {
+            std::cerr << "[DQNAgent] Failed to atomic-rename model to " << path << "\n";
+        } else {
+            std::cout << "[DQNAgent] Model saved to: " << path << "\n";
+        }
     }
 
     void load_model(const std::string& path) {

@@ -99,7 +99,7 @@ int Level::run() {
         bool died = update();  // derived class
         m_logicTimeMs = logicClock.getElapsedTime().asSeconds() * 1000.f;
 
-        if (train && action >= 0 && action <= 4) {
+        if (train && action >= 0 && action <= 14) {
             HumanTrainer::instance().recordExperience(state, action, m_lastReward, getState(), died);
         }
 

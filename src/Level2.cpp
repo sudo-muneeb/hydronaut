@@ -122,7 +122,7 @@ std::vector<float> Level2::getState() const {
     sf::Vector2f sV    = m_sine.getVelocity();
     sf::Vector2f pV    = m_para.getVelocity();
 
-    std::vector<float> s(49, 0.f);
+    std::vector<float> s(50, 0.f);
 
     s[0] = 0.5f;
     s[1] = std::clamp(wf / REF_W, 0.f, 1.f);
@@ -155,6 +155,7 @@ std::vector<float> Level2::getState() const {
     // s[48] = 1 if Sonar Pulse is off cooldown, 0 otherwise
     s[47] = m_player.dashAvailable() ? 1.f : 0.f;
     s[48] = isSonarReady() ? 1.f : 0.f;
+    s[49] = std::min(1.0f, static_cast<float>(m_idleFrames) / 100.0f);
 
     return s;
 }
@@ -201,7 +202,16 @@ std::vector<float> Level2::step(int action, float& reward, bool& isDone) {
     // ── Idleness penalty — punish barely-moving agent ─────────────────────
     sf::Vector2f vel = m_player.getVelocity();
     float speed = std::sqrt(vel.x * vel.x + vel.y * vel.y);
-    if (speed < 0.5f) reward -= 0.5f;
+    if (speed < 0.5f) {
+        m_idleFrames++;
+    } else {
+        m_idleFrames = 0;
+    }
+
+    if (m_idleFrames > 100) {
+        reward -= 50.0f;
+        isDone = true;
+    }
 
     // ── Treasure collected ────────────────────────────────────────────────
     if (m_player.getBounds().intersects(m_treasure.getBounds())) {

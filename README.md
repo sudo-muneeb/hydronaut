@@ -1,243 +1,87 @@
 # Hydronaut 🚢
 
-A 2D submarine dodge-and-collect game built with **SFML 2.x** and **C++17**.  
-Navigate your submarine through increasingly chaotic obstacle patterns across 3 levels.
+A 2D submarine dodge-and-collect game built with **SFML 2.x** and **C++17**, featuring a custom **Deep Q-Network (DQN) AI** trained via **LibTorch** to autonomously play the game!
+
+Navigate your submarine through increasingly chaotic obstacle patterns across 3 distinct levels, or watch as the integrated neural network learns to dodge, survive, and hunt for treasure on its own.
 
 ---
 
-## Building & Running
+## 🌟 Overview & Key Features
+
+Hydronaut serves as both an entertaining survival/collection arcade game and a fully realized environment for Reinforcement Learning (RL). 
+
+*   **Responsive 2D Engine**: Built robustly using C++17 and SFML, utilizing screen-relative mathematics allowing the game and the AI to scale seamlessly across any window resolution seamlessly.
+*   **Three Distinct Challenges**:
+    *   **Level 1 (Obstacles Unleashed):** Pure survival against aggressively swarming, rotating convex shapes.
+    *   **Level 2 (Arc of Chaos):** Treasure hunting while dodging Sine-wave and Parabolic moving creatures.
+    *   **Level 3 (Waves of Danger):** Advanced treasure hunting amidst enemies that stalk via complex Secant and Exponential-Sine mathematical curves.
+*   **Integrated DQN Agent**: A robust Deep Reinforcement Learning agent completely capable of executing the game autonomously, built top-to-bottom using PyTorch's C++ library (LibTorch).
+*   **Asset Management Singleton**: Ensures reliable memory and resource management keeping SFML textures and fonts protected from dangling pointers and reallocation mid-frame.
+
+---
+
+## 🧠 Deep Reinforcement Learning (AI)
+
+At the heart of the project is a deep neural network that learned to conquer the game through thousands of simulated episodes without raw pixel data.
+
+### Architecture
+- **LibTorch C++ API**: Used to train the AI directly inside the C++ environment natively.
+- **Model**: A multi-layer perceptron (MLP) mapping a 49-dimensional state space down to 5 action outputs (`Up, Down, Left, Right, Idle`). The architecture scales through 3 dense hidden layers (256 -> 256 -> 128).
+- **Target Network & Experience Replay**: The agent stores 50,000 transition frames in a replay buffer, sampling random batches of 64 frames to gently stabilize Q-learning using delayed target soft-updates.
+
+### State & Reward Shaping
+- **Normalized Observations**: The AI is fed a tightly normalized (`[0, 1]` and `[-1, 1]`) 49-dimensional float array carrying game context: Level ID, viewport dimensions, specific velocities, timeout counters, and proximity coordinates for up to 8 objects.
+- **Goal-Oriented AI**: Depending on the level, the AI is motivated by unique reward algorithms. Level 1 strictly rewards survival. Levels 2 & 3 heavily incentivize the approach vector towards treasure, punish camping/idling below certain speeds, and provide massive reward spikes (+200.0) for grabbing the chest while treating enemy collision as heavily lethal (-100.0).
+- **Resolution Agnostic Training**: The AI logic is trained across dynamically shifting resolutions `(640x480 to 1920x1080)` to teach spatial adaptation rather than memorizing routes.
+
+---
+
+## 🚀 Building & Running
+
+### Dependencies
+- `libsfml-graphics`, `libsfml-window`, `libsfml-system`, `libsfml-audio`
+- `g++` (Compiler with `-std=c++17` support)
+- `LibTorch` / PyTorch C++ API (for AI components)
+- `CMake` (for orchestrating the build)
+
+### Quick Start
+
+The included shell script will handle standard compilation and launch the game for human play:
 
 ```bash
 bash run.sh
 ```
 
-That's it. The script compiles everything and launches the game.
-
-**Dependencies:** `libsfml-graphics`, `libsfml-window`, `libsfml-system`, `libsfml-audio`  
-**Compiler:** g++ with `-std=c++17`
+### Running the AI Executables
+If the project is built via CMake, specific RL targets are produced:
+*   `./build/play_hydronaut`: Opens the physical rendering window and runs the game in pure algorithmic exploitation using the trained `hydronaut_dqn.pt` model.
+*   `./build/train_hydronaut`: Executes the game in rapid headless mode (no visual SFML window overhead), allowing the network to rapidly train policies and commit gradients across generations.
 
 ---
 
-## Controls
+## 🎮 Controls (Human Mode)
 
 | Key | Action |
 |---|---|
-| `↑ ↓ ← →` | Move submarine |
+| `↑ ↓ ← →` | Move the submarine |
 | `P` | Pause / Resume |
-| `Escape` | Return to menu from any level |
+| `Escape` | Return to main menu from any level / quit |
 | `Enter` | Select menu option |
 
 ---
 
-## Project Structure
+## 📂 Project Structure
 
-```
+```text
 hydronaut/
 ├── assets/                  Media files (fonts, music, sprites)
-├── include/                 Header files (one per class)
-├── src/                     Source files (one per class)
-├── run.sh                   Build + run script
-└── hydronaut                Compiled binary
+├── include/                 Header files defining game objects & RL states
+├── src/                     Source files (engine loop, physics, AI execution)
+├── libtorch/                C++ PyTorch libraries used for DQN
+├── CMakeLists.txt           Build definitions for Game, Train, and Play targets
+├── run.sh                   Quick-start build/run script
+└── hydronaut                Compiled main binary
 ```
 
----
-
-## File Descriptions
-
-### `include/Constants.hpp`
-Global compile-time constants:
-- `DEFAULT_WINDOW_WIDTH / HEIGHT` — initial window size (900×900)
-- `MIN_WINDOW_WIDTH / HEIGHT` — resize floor (640×480), enforced at runtime
-- `PLAYER_SPEED`, `INITIAL_OBSTACLE_SPEED`, etc. — gameplay tuning knobs
-- `ASSET_*` — all asset paths in one place
-
----
-
-### `include/AssetManager.hpp` / `src/AssetManager.cpp`
-**Singleton** that loads every texture and the font **once** on startup.
-
-- `AssetManager::instance().loadAll()` — throws `std::runtime_error` if any asset is missing (fast-fail)
-- `texture("submarine")` / `font()` — O(1) lookup via `unordered_map`
-- All SFML objects are kept alive for the entire process lifetime — no dangling texture pointers
-
----
-
-### `include/Player.hpp` / `src/Player.cpp`
-The **player submarine**.
-
-- Scaled to 7% of window height, starts at the left-center
-- `handleInput(windowSize)` — reads arrow keys, clamps position to window bounds
-- `reset(windowSize)` — repositions for a new level without reallocating
-- Position clamping is fully relative to the live `window.getSize()`
-
----
-
-### `include/Obstacle.hpp`
-**Abstract base class** for all enemies. Defines the interface:
-```cpp
-virtual void update(sf::Vector2u windowSize) = 0;
-virtual void draw(sf::RenderWindow& window)  = 0;
-virtual sf::FloatRect getBounds() const      = 0;
-virtual void reset(sf::Vector2u windowSize)  = 0;
-```
-All implementations receive the live window size each frame — the math functions normalize
-`x` and `y` to fractions of `windowSize`, so every level adapts automatically to any resolution.
-
----
-
-### `include/ConvexObstacle.hpp` / `src/ConvexObstacle.cpp`  *(Level 1)*
-Orange rotating triangles.
-
-- `ConvexObstacle` — individual spinning triangle; size = 10% of `min(width, height)`
-- `ConvexObstaclePool` — manages a `std::vector` pre-reserved to 30 slots to avoid mid-frame reallocations; spawns with ~1-in-50 random chance per frame; removes off-screen obstacles
-- Speed starts at `INITIAL_OBSTACLE_SPEED` and grows as `speed = base × 1.3^(score/100)` up to score 500
-
-### `include/SineObstacle.hpp` / `src/SineObstacle.cpp`  *(Level 2)*
-Sea-urchin that traces a sine wave.
-
-**Math (window-relative):**
-```
-half = windowHeight / 2
-if x ≤ W/2:  y = half × (1 - sin(π/W × x))
-else:        y = half + |sin(π/W × (x - W/2))| × half
-```
-Moves left at 3 px/frame; respawns in the right 50% of the screen.
-
-### `include/ParabolicObstacle.hpp` / `src/ParabolicObstacle.cpp`  *(Level 2)*
-Crab that bounces along a parabolic arc.
-
-**Math (window-relative):**
-```
-norm = x / windowWidth        (0..1)
-para = 4 × norm × (1 - norm)  (peaks at 1 when centered)
-y = half ± half × √para
-```
-Direction flips at x=0 (bounce back right) and at x=windowWidth (resets).
-
-### `include/SecObstacle.hpp` / `src/SecObstacle.cpp`  *(Level 3)*
-Octopus following a secant curve.
-
-**Math (window-relative):**
-```
-angle = (π / windowWidth) × 3 × x
-y = sec(angle) / 6 × windowHeight/2   (clamped to avoid asymptotes)
-```
-Moves left at 1 px/frame (slowest — hardest to predict). Asymptote guard: if |cos| < 0.05, clamp to 0.05.
-
-### `include/ExpSineObstacle.hpp` / `src/ExpSineObstacle.cpp`  *(Level 3)*
-Lanternfish on an exponentially damped sine path.
-
-**Math (window-relative):**
-```
-amplitude = windowHeight × 0.15
-y = windowHeight/2 + amplitude × sin(0.01×x) × exp(-0.001×x)
-```
-Oscillations shrink as x increases; resets to right side when it reaches the left edge.
-
----
-
-### `include/Treasure.hpp` / `src/Treasure.cpp`
-Treasure chest that appears in Levels 2 and 3.
-
-- Spawns within the **inner 70%** of the window (15–85% margin on each axis)
-- `respawn(windowSize)` — repositions to a new random location and rescales to window
-- Guard against inverted spawn ranges on very small windows
-
----
-
-### `include/Level.hpp` / `src/Level.cpp`
-**Abstract base class** for all 3 levels. Owns the shared game loop:
-
-```
-run() loop
- ├─ pollEvent → resize enforcement, P pause, Escape to menu
- ├─ drawBackground() — deep-sea gradient quad, no image required
- ├─ update() [pure virtual] → obstacle logic, collision detection
- ├─ draw()   [pure virtual] → draw enemies, player, treasure
- └─ drawHUD()              → score text top-left
-showGameOver()             → overlay, 2-second display
-```
-- Resize events clamp window to `MIN_WINDOW_WIDTH × MIN_WINDOW_HEIGHT`
-- Pause draws a dim overlay + "PAUSED" text and keeps the scene visible beneath
-
-### `include/Level1.hpp` / `src/Level1.cpp` — *Obstacles Unleashed*
-- Uses `ConvexObstaclePool`
-- Score increments **every frame** (survival-based)
-- Obstacle speed recalculates each frame from `getScore()`
-
-### `include/Level2.hpp` / `src/Level2.cpp` — *Arc of Chaos*
-- `SineObstacle` (urchin) + `ParabolicObstacle` (crab)
-- Score += 10 for each **treasure** collected
-- Touch either obstacle → game over
-
-### `include/Level3.hpp` / `src/Level3.cpp` — *Waves of Danger*
-- `SecObstacle` (octopus) + `ExpSineObstacle` (lanternfish)
-- Score += 10 per treasure
-- Hardest movement patterns
-
----
-
-### `include/Menu.hpp` / `src/Menu.cpp`
-- Deep-sea gradient background drawn in code (navy → teal-blue) via `sf::VertexArray`
-- Title "HYDRONAUT", subtitle, and controls hint drawn proportionally to window size
-- Items and highlight rescale on every frame — correct after any resize
-- Returns selected level (1/2/3) or -1 on close
-
----
-
-### `src/main.cpp`
-Entry point:
-1. Creates an `sf::RenderWindow` (900×900, resizable)
-2. Calls `AssetManager::instance().loadAll()` — **throws** on missing file
-3. Opens music (non-fatal if missing)
-4. Main loop: `Menu::run()` → instantiates the correct `Level` subclass as `unique_ptr<Level>` → `level->run()`
-5. **Two-level exception handling:**
-   - Inner catch around each level → crash returns to menu
-   - Outer catch around everything → fatal error with message, clean exit
-
----
-
-## Program Flow
-
-```
-main()
- └─ AssetManager::loadAll()       ←── throws on missing asset
- └─ [music loop]
- └─ while(window.isOpen())
-      ├─ Menu::run()              ←── returns 1/2/3 or -1
-      └─ unique_ptr<Level> level
-           ├─ Level1 / Level2 / Level3 (constructor)
-           │     └─ Player(windowSize)
-           │     └─ [Obstacle subclasses](windowSize)
-           │     └─ Treasure(windowSize)       [L2/L3 only]
-           └─ level->run()                     ← base Level loop
-                 ├─ sf::Event polling
-                 ├─ drawBackground()
-                 ├─ update()    ← derived class: move + collide
-                 ├─ draw()      ← derived class: render enemies
-                 └─ drawHUD()
-           └─ showGameOver()
-           └─ [back to menu]
-```
-
----
-
-## Exception Safety
-
-| Scenario | Behaviour |
-|---|---|
-| Missing font or texture | `AssetManager::loadAll()` throws → fatal exit with message |
-| Missing music | Warning printed; game continues without audio |
-| Level throws at runtime | Caught by per-level guard; returns to menu |
-| Any other crash | Outer `catch(...)` prints message and exits cleanly |
-| Zero-size window | All obstacle `reset()` / `update()` methods early-return |
-| Modulo-zero in rand | All `rand() % n` guarded so `n > 0` before call |
-
----
-
-## Memory Notes
-
-- All SFML resources (textures, font) are owned by `AssetManager` (static singleton) — no manual `delete`
-- `ConvexObstaclePool` pre-reserves 30 slots on first use — no mid-frame vector reallocation
-- Level objects are `unique_ptr<Level>` — automatically destroyed when returning to menu
-- Sprites hold a `const sf::Texture*` pointer into `AssetManager` (which lives for the process) — no dangling pointers
+**Memory & Safety Notes:**
+All objects are strongly protected via double-exception catching per loop, window size safety clamps, strictly bound vectors replacing dynamic arrays per-frame, and deterministic memory teardown using `std::unique_ptr` per level execution.

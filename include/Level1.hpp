@@ -17,6 +17,8 @@ public:
     std::vector<float> reset(sf::Vector2u windowSize)                     override;
     std::vector<float> step(int action, float& reward, bool& isDone)      override;
 
+    const Player& getPlayer() const override { return m_player; }
+
 protected:
     bool update() override;
     void draw()   override;

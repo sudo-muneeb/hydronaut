@@ -44,7 +44,7 @@ bool Level1::update() {
     if (!m_player.isDashing()) {
         if (m_pool.collidesWithPlayer(m_player.getBounds())) {
             triggerShake(SHAKE_FRAMES_DEATH, SHAKE_INTENSITY_DEATH);
-            reward = -200.f;  // death penalty
+            reward = -100.f;  // death penalty
         }
     }
 
@@ -52,7 +52,7 @@ bool Level1::update() {
     else                 ++m_stepsSinceReward;
     m_lastReward = reward;
 
-    return (reward == -200.f);
+    return (reward == -100.f);
 }
 
 void Level1::draw() {
@@ -122,7 +122,7 @@ std::vector<float> Level1::step(int action, float& reward, bool& isDone) {
 
     // RL path: use applyAction (PLAYER_ACCEL*4 impulse) — preserves the
     // original steering authority that the agent was trained with.
-    applyAction(m_player, action);
+    float bonus = applyAction(m_player, action);
     m_player.setWindowSize(winSize);
     m_player.update(dt);
 
@@ -132,7 +132,8 @@ std::vector<float> Level1::step(int action, float& reward, bool& isDone) {
 
     m_pool.update(winSize, m_speed);
 
-    reward = 0.15f;
+    // ── Survival base & abilities ─────────────────────────────────────
+    reward = 0.15f + bonus;
     isDone = false;
 
     // ── Idleness penalty ──────────────────────────────────────────────
@@ -141,16 +142,16 @@ std::vector<float> Level1::step(int action, float& reward, bool& isDone) {
     if (speed < 0.5f) {
         m_idleFrames++;
     } else {
-        m_idleFrames = 0;
+        m_idleFrames = std::max(0, m_idleFrames - 5);
     }
 
     if (m_idleFrames > 100) {
-        reward -= 50.0f;
-        isDone = true;
+        reward -= 100.0f;
+        if (m_trainingMode) isDone = true;
     }
 
     if (m_pool.collidesWithPlayer(m_player.getBounds())) {
-        reward = -200.f;
+        reward -= 100.f;
         isDone = true;
     }
 

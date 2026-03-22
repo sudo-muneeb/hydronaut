@@ -38,6 +38,9 @@ public:
     // Convenience: window size used by headless training loop
     sf::Vector2u getWindowSize() const noexcept { return m_window.getSize(); }
 
+    // Access to player for HUD rendering of abilities
+    virtual const Player& getPlayer() const = 0;
+
     // ─── Inference rendering ──────────────────────────────────────────────
     // Render one visual frame: background → shake → level sprites → HUD.
     // Call this from play.cpp after env->step() to show the full game view.
@@ -58,7 +61,7 @@ protected:
     // ─── RL helper ────────────────────────────────────────────────────────
     // Translate discrete action (0=Up,1=Down,2=Left,3=Right) into a velocity
     // impulse applied directly to the Player (bypasses keyboard polling).
-    void applyAction(Player& player, int action) noexcept;
+    float applyAction(Player& player, int action) noexcept;
 
     // ─── Shared helpers for subclasses ────────────────────────────────────
     void drawBackground();

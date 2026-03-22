@@ -226,11 +226,13 @@ sf::Vector2u Level::getSimSize() const noexcept {
 // Action space: 0-14 composite action.
 // Base: 0=Up, 1=Down, 2=Left, 3=Right, 4=None
 // Modifier: +5 for Dash space, +10 for Sonar X
-void Level::applyAction(Player& player, int action) noexcept {
+float Level::applyAction(Player& player, int action) noexcept {
     int  baseDir;
     bool dashReq;
     bool sonarReq;
     InputHandler::decodeAction(action, baseDir, dashReq, sonarReq);
+
+    float bonus = 0.0f;
 
     // 1. Movement & Dash
     // We use the same Player::applyCommand interface that the human uses,
@@ -247,8 +249,11 @@ void Level::applyAction(Player& player, int action) noexcept {
             m_sonarActive = true;
             m_sonarRadius = 0.f;
             m_sonarCenter = m_baseView.getCenter();
+            bonus += 1.0f; // Reward for using ability successfully
         }
     }
+    
+    return bonus;
 }
 
 void Level::applyShake() {
@@ -336,11 +341,72 @@ void Level::drawHUD() {
 
     auto& font = AssetManager::instance().font();
 
+    // ─── Cooldown Bars ────────────────────────────────────────────────────────
+    float barOuterWidth = 70.f * hScale;
+    float barOuterHeight = 12.f * hScale;
+    float barX = vs.x * 0.012f;
+    float barOuterY_dash  = vs.y * 0.012f;
+    float barOuterY_sonar = barOuterY_dash + barOuterHeight + 8.f * hScale;
+
+    // Dash (SPACE) Cooldown
+    float dashRem = getPlayer().dashCooldownRemaining();
+    float dashRatio = 1.0f - (dashRem / DASH_COOLDOWN_SEC);
+    if (dashRatio < 0.f) dashRatio = 0.f;
+    if (dashRatio > 1.f) dashRatio = 1.f;
+    
+    sf::RectangleShape dashBg({barOuterWidth, barOuterHeight});
+    dashBg.setPosition(barX, barOuterY_dash);
+    dashBg.setFillColor(sf::Color(40, 40, 40, 200));
+    dashBg.setOutlineThickness(1.f);
+    dashBg.setOutlineColor(sf::Color(100, 100, 100, 200));
+    m_window.draw(dashBg);
+
+    sf::RectangleShape dashFg({barOuterWidth * dashRatio, barOuterHeight});
+    dashFg.setPosition(barX, barOuterY_dash);
+    dashFg.setFillColor(dashRatio >= 1.f ? sf::Color(100, 255, 100, 255) : sf::Color(255, 150, 50, 255));
+    m_window.draw(dashFg);
+
+    sf::Text dashLabel;
+    dashLabel.setFont(font);
+    dashLabel.setString("SPC");
+    dashLabel.setCharacterSize(std::max(9u, static_cast<unsigned>(10.f * hScale)));
+    dashLabel.setFillColor(sf::Color::White);
+    dashLabel.setPosition(barX + 2.f, barOuterY_dash - 1.f);
+    m_window.draw(dashLabel);
+
+    // Sonar (X) Cooldown
+    float sonarRem = m_sonarFired ? (SONAR_COOLDOWN_SEC - m_sonarCooldownClock.getElapsedTime().asSeconds()) : 0.0f;
+    if (sonarRem < 0.f) sonarRem = 0.f;
+    float sonarRatio = m_sonarActive ? 0.f : (1.0f - (sonarRem / SONAR_COOLDOWN_SEC));
+    if (sonarRatio < 0.f) sonarRatio = 0.f;
+    if (sonarRatio > 1.f) sonarRatio = 1.f;
+
+    sf::RectangleShape sonarBg({barOuterWidth, barOuterHeight});
+    sonarBg.setPosition(barX, barOuterY_sonar);
+    sonarBg.setFillColor(sf::Color(40, 40, 40, 200));
+    sonarBg.setOutlineThickness(1.f);
+    sonarBg.setOutlineColor(sf::Color(100, 100, 100, 200));
+    m_window.draw(sonarBg);
+
+    sf::RectangleShape sonarFg({barOuterWidth * sonarRatio, barOuterHeight});
+    sonarFg.setPosition(barX, barOuterY_sonar);
+    sonarFg.setFillColor(m_sonarActive ? sf::Color(255, 50, 50, 255) : (sonarRatio >= 1.f ? sf::Color(100, 255, 255, 255) : sf::Color(255, 150, 50, 255)));
+    m_window.draw(sonarFg);
+
+    sf::Text sonarLabel;
+    sonarLabel.setFont(font);
+    sonarLabel.setString("X");
+    sonarLabel.setCharacterSize(std::max(9u, static_cast<unsigned>(10.f * hScale)));
+    sonarLabel.setFillColor(sf::Color::White);
+    sonarLabel.setPosition(barX + 2.f, barOuterY_sonar - 1.f);
+    m_window.draw(sonarLabel);
+
     // Score
+    float textOffsetX = barX + barOuterWidth + 15.f * hScale;
     unsigned scoreSize = static_cast<unsigned>(28.f * hScale);
     m_scoreText.setCharacterSize(std::max(14u, scoreSize));
     m_scoreText.setString("Score: " + std::to_string(m_score));
-    m_scoreText.setPosition(vs.x * 0.012f, vs.y * 0.012f);
+    m_scoreText.setPosition(textOffsetX, vs.y * 0.012f);
     m_window.draw(m_scoreText);
 
     // Sonar status (below score)
@@ -365,7 +431,7 @@ void Level::drawHUD() {
         sonarText.setFillColor(sf::Color(80, 200, 255, 255));
         sonarText.setString("X Sonar: ACTIVE");
     }
-    sonarText.setPosition(vs.x * 0.012f, vs.y * 0.012f + scoreSize + 4.f);
+    sonarText.setPosition(textOffsetX, vs.y * 0.012f + scoreSize + 4.f);
     m_window.draw(sonarText);
 
     // F3 debug hint — top-right corner

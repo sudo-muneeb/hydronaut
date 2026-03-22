@@ -15,7 +15,18 @@ HumanTrainer& HumanTrainer::instance() {
 
 HumanTrainer::HumanTrainer() = default;
 HumanTrainer::~HumanTrainer() {
-    saveModel();
+    // Intentionally empty. Do not save here, as LibTorch might be tearing down.
+    // Call shutdown() explicitly at the end of main().
+}
+
+void HumanTrainer::shutdown() {
+    if (m_initialized) {
+        saveModel();
+        // Explicitly release torch modules before global destruction
+        m_agent.reset();
+        m_buffer.reset();
+        m_initialized = false;
+    }
 }
 
 void HumanTrainer::initIfNeeded() {

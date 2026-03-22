@@ -22,7 +22,7 @@
 struct DQNNetImpl : torch::nn::Module {
     torch::nn::Linear fc1{nullptr}, fc2{nullptr}, fc3{nullptr};
 
-    DQNNetImpl(int inputDim, int hiddenDim, int outputDim) {
+    DQNNetImpl(int inputDim, int hiddenDim, int outputDim) : torch::nn::Module("DQNNet") {
         fc1 = register_module("fc1", torch::nn::Linear(inputDim,  hiddenDim));
         fc2 = register_module("fc2", torch::nn::Linear(hiddenDim, hiddenDim));
         fc3 = register_module("fc3", torch::nn::Linear(hiddenDim, outputDim));

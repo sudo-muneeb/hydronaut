@@ -78,7 +78,7 @@ bool Level3::update() {
             pixelPerfectOverlap(m_player.getSprite(), am.image("submarine"),
                                 m_expSine.getSprite(),am.image("fish")))    {
             triggerShake(SHAKE_FRAMES_DEATH, SHAKE_INTENSITY_DEATH);
-            reward = -200.f; // user requested this
+            reward = -100.f; // user requested this
             died = true;
         }
     }
@@ -174,7 +174,7 @@ std::vector<float> Level3::step(int action, float& reward, bool& isDone) {
 
     // RL path: use applyAction (PLAYER_ACCEL*4 impulse) — same authority as
     // human multi-frame key-hold.  applyCommand would be 4× weaker.
-    applyAction(m_player, action);
+    float bonus = applyAction(m_player, action);
     m_player.setWindowSize(winSize);
     m_player.update(dt);
     m_sec.update(winSize);
@@ -187,31 +187,31 @@ std::vector<float> Level3::step(int action, float& reward, bool& isDone) {
     float dx = pC.x - tC.x,  dy = pC.y - tC.y;
     float curDist = std::sqrt(dx*dx + dy*dy);
 
-    // ── Survival reward ─────────────────────────────────────────────────
-    reward = 0.15f;
+    // ── Survival reward & abilities ─────────────────────────────────────
+    reward = 0.15f + bonus;
 
-    // ── Approach shaping (×5 vs old) ───────────────────────────────────
+    // ── Approach shaping ────────────────────────────────────────────────
     if (m_prevDistToTreasure > 0.f) {
-        float approach = (m_prevDistToTreasure - curDist) * 0.50f;
+        float approach = (m_prevDistToTreasure - curDist) * 0.05f;
         reward += approach;
     }
     m_prevDistToTreasure = curDist;
 
-    // ── Idleness penalty ──────────────────────────────────────────────
+    // ── Idleness penalty ────────────────────────────────────────────────
     sf::Vector2f vel = m_player.getVelocity();
     float speed = std::sqrt(vel.x * vel.x + vel.y * vel.y);
     if (speed < 0.5f) {
         m_idleFrames++;
     } else {
-        m_idleFrames = 0;
+        m_idleFrames = std::max(0, m_idleFrames - 5);
     }
 
     if (m_idleFrames > 100) {
-        reward -= 50.0f;
-        isDone = true;
+        reward -= 100.0f;
+        if (m_trainingMode) isDone = true;
     }
 
-    // ── Treasure collected ────────────────────────────────────────────
+    // ── Treasure collected ──────────────────────────────────────────────
     if (m_player.getBounds().intersects(m_treasure.getBounds())) {
         m_treasure.respawn(winSize);
         addScore(10);
@@ -219,13 +219,13 @@ std::vector<float> Level3::step(int action, float& reward, bool& isDone) {
         m_prevDistToTreasure = -1.f;
     }
 
-    // ── Lethal collision ─────────────────────────────────────────────
+    // ── Lethal collision ────────────────────────────────────────────────
     auto& am = AssetManager::instance();
     if (pixelPerfectOverlap(m_player.getSprite(), am.image("submarine"),
                             m_sec.getSprite(),    am.image("octopus"))  ||
         pixelPerfectOverlap(m_player.getSprite(), am.image("submarine"),
                             m_expSine.getSprite(),am.image("fish")))    {
-        reward  = -200.f; // user requested -200
+        reward  -= 100.f; // user requested -100
         isDone  = true;
     }
 

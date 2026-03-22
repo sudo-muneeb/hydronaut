@@ -22,6 +22,9 @@ public:
     // Force save the current network weights
     void saveModel();
 
+    // Explicitly save the model and cleanup LibTorch state before exit
+    void shutdown();
+
 private:
     HumanTrainer();
     ~HumanTrainer();

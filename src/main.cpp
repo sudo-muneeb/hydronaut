@@ -11,6 +11,7 @@
 #include "Level2.hpp"
 #include "Level3.hpp"
 #include "Settings.hpp"
+#include "HumanTrainer.hpp"
 
 int main() {
     try {
@@ -79,6 +80,9 @@ int main() {
         std::cerr << "[FATAL] Unknown exception.\n";
         return EXIT_FAILURE;
     }
+
+    // Safely shutdown HumanTrainer (and its PyTorch models) before exit
+    HumanTrainer::instance().shutdown();
 
     return EXIT_SUCCESS;
 }

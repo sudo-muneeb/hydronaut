@@ -25,6 +25,14 @@ Experience Replay is used to break correlation between consecutive frames and al
 - **Capacity**: Stores the last `50,000` transitions `(state, action, reward, next_state, done)`.
 - **Sampling**: Uniformly samples batches of size `64` for training.
 
+### 4. Advanced RL Engine Architecture (GoF Patterns)
+To support robust telemetry gathering, imitation learning, and rapid RL episodic resets, the simulation engine is strictly decoupled using pure Gang of Four (GoF) design patterns:
+- **Dependency Injection**: The core `GameApp` and all `SimulationEnvironment` game logic are isolated from concrete SFML rendering dependencies or the RL `HumanTrainer` singleton via pure abstract interfaces (`IInterfaces.hpp` and `SFMLAdapters.hpp`).
+- **Command Pattern**: All physical inputs are decoupled from the simulation. The `InputHandler` generates discrete `Command` objects pushed to a `CommandQueue`, allowing flawless serialization to `telemetry.log` for imitation learning. 
+- **Observer Pattern**: A Publish-Subscribe `EventBus` manages communications between core physics, telemetry loggers, and reward systems. `RewardObserver`, `ScoreObserver`, and `TrainerObserver` react to standard events uniformly (`RewardGranted`, `PlayerCollision`, `ExperienceGenerated`) without hardcoded linkages.
+- **State & Strategy Patterns**: The `HydronautEntity` flattens complex branching logic by delegating behavior directly to discrete State objects (`NormalState`, `DashState`). Meanwhile, `SimulationEnvironment` accepts injected `IRewardStrategy` implementations (`Level1RewardStrategy`, etc.) to dynamically swap score calculations.
+- **Memento Pattern**: To avoid the heavy computational penalty of destroying and recreating the physics object graph during RL episodes, `SimulationEnvironment` acts as an Originator, exposing `create_memento()` and `restore_memento()` to rapidly snapshot and rollback the precise mathematical game state isolated inside an opaque `SimulationMemento` container.
+
 ---
 
 ## 🧠 State Representation (49 Dimensions)

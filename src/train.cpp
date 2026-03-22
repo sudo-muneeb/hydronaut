@@ -46,7 +46,7 @@ int main(int argc, char* argv[]) {
         Level2 lvl2(window); lvl2.setTrainingMode(true);
         Level3 lvl3(window); lvl3.setTrainingMode(true);
 
-        std::array<Level*, 3> levels{ &lvl1, &lvl2, &lvl3 };
+        std::array<SimulationEnvironment*, 3> levels{ &lvl1, &lvl2, &lvl3 };
 
         ReplayBuffer buffer(50'000);
         DQNAgent     agent;
@@ -74,7 +74,7 @@ int main(int argc, char* argv[]) {
                 current_phase = 3;
             }
 
-            Level* env = levels[current_phase - 1];
+            SimulationEnvironment* env = levels[current_phase - 1];
 
             // drain sfml events
             { sf::Event e; while (window.pollEvent(e)) {} }

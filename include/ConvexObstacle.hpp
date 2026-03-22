@@ -3,7 +3,7 @@
 #include <vector>
 #include <limits>
 
-// ─── Level 1 — Rotating convex-triangle obstacle ──────────────────────────────
+// ─── SimulationEnvironment 1 — Rotating convex-triangle obstacle ──────────────────────────────
 class ConvexObstacle : public Obstacle {
 public:
     explicit ConvexObstacle(sf::Vector2u windowSize);
@@ -13,6 +13,16 @@ public:
     sf::FloatRect getBounds()                     const noexcept override;
     void          reset(sf::Vector2u windowSize)  override;
     void          setSpeed(float speed)           noexcept;
+
+    // ─── Memento API ──────────────────────────────────────────────────────
+    struct Snapshot {
+        float x, y;
+        float speed;
+        // rotation not strictly needed since hitboxes are circles, but good for exact visual match
+        float rotation;
+    };
+    Snapshot saveState() const;
+    void     restoreState(const Snapshot& snap, sf::Vector2u windowSize);
 
 private:
     sf::ConvexShape m_shape;
@@ -27,7 +37,7 @@ struct ObstacleSnapshot {
     sf::Vector2f velocity;  // frame-by-frame displacement (px/frame)
 };
 
-// ─── Managed collection of ConvexObstacles for Level 1 ───────────────────────
+// ─── Managed collection of ConvexObstacles for SimulationEnvironment 1 ───────────────────────
 class ConvexObstaclePool {
 public:
     void update(sf::Vector2u windowSize, float speed);
@@ -40,6 +50,14 @@ public:
     // zero-velocity, zero-position entries if fewer are active.
     std::vector<ObstacleSnapshot> getSnapshots(sf::Vector2f playerPos,
                                                std::size_t  maxCount) const noexcept;
+
+    // ─── Memento API ──────────────────────────────────────────────────────
+    struct Snapshot {
+        std::vector<ConvexObstacle::Snapshot> obstacles;
+        float speed;
+    };
+    Snapshot saveState() const;
+    void     restoreState(const Snapshot& snap, sf::Vector2u windowSize);
 
 private:
     void spawnOne(sf::Vector2u windowSize);

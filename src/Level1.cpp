@@ -1,6 +1,8 @@
 #include "Level1.hpp"
 #include "Constants.hpp"
 #include "InputHandler.hpp"
+#include "EventBus.hpp"
+#include "RewardStrategy.hpp"
 #include <algorithm>
 #include <cmath>
 
@@ -12,8 +14,10 @@ static constexpr float REF_W          = 1920.f;
 static constexpr float REF_H          = 1080.f;
 
 Level1::Level1(sf::RenderWindow& window)
-    : Level(window), m_player(window.getSize())
+    : SimulationEnvironment(window), m_player(window.getSize())
 {
+    // Inject the Level1 reward strategy (Strategy Pattern)
+    setRewardStrategy(std::make_unique<Level1RewardStrategy>());
 }
 
 // ─── Normal gameplay update ───────────────────────────────────────────────────
@@ -29,7 +33,7 @@ bool Level1::update() {
 
     bool dashed = m_player.applyCommand(baseDir, dashRequest);
     m_player.update(dt);
-    if (dashed) triggerShake(DASH_SHAKE_FRAMES, DASH_SHAKE_INTENSITY);
+    if (dashed) getEventBus().publish({"ScreenShake", ShakeParams{DASH_SHAKE_FRAMES, DASH_SHAKE_INTENSITY}});
 
     if (getScore() < SCORE_SPEED_THRESHOLD)
         m_speed = INITIAL_OBSTACLE_SPEED *
@@ -37,14 +41,18 @@ bool Level1::update() {
 
     float poolSpeed = m_speed * getSonarFactor();
     m_pool.update(winSize, poolSpeed);
-    addScore(1);
+    getEventBus().publish({"ScoreAdded", 1});
 
     float reward = 0.15f; // survival base
 
+    bool died = false;
     if (!m_player.isDashing()) {
         if (m_pool.collidesWithPlayer(m_player.getBounds())) {
-            triggerShake(SHAKE_FRAMES_DEATH, SHAKE_INTENSITY_DEATH);
-            reward = -100.f;  // death penalty
+            getEventBus().publish({"ScreenShake", ShakeParams{SHAKE_FRAMES_DEATH, SHAKE_INTENSITY_DEATH}});
+            getEventBus().publish({"PlayerCollision", {}});
+            getEventBus().publish({"RewardPenalty", 100.f});
+            reward = -100.f;
+            died = true;
         }
     }
 
@@ -52,7 +60,7 @@ bool Level1::update() {
     else                 ++m_stepsSinceReward;
     m_lastReward = reward;
 
-    return (reward == -100.f);
+    return died;
 }
 
 void Level1::draw() {
@@ -120,8 +128,6 @@ std::vector<float> Level1::step(int action, float& reward, bool& isDone) {
     auto winSize = m_window.getSize();
     float dt     = 1.f / 60.f;
 
-    // RL path: use applyAction (PLAYER_ACCEL*4 impulse) — preserves the
-    // original steering authority that the agent was trained with.
     float bonus = applyAction(m_player, action);
     m_player.setWindowSize(winSize);
     m_player.update(dt);
@@ -132,34 +138,64 @@ std::vector<float> Level1::step(int action, float& reward, bool& isDone) {
 
     m_pool.update(winSize, m_speed);
 
-    // ── Survival base & abilities ─────────────────────────────────────
-    reward = 0.15f + bonus;
-    isDone = false;
-
-    // ── Idleness penalty ──────────────────────────────────────────────
+    // Update idleness tracker
     sf::Vector2f vel = m_player.getVelocity();
     float speed = std::sqrt(vel.x * vel.x + vel.y * vel.y);
-    if (speed < 0.5f) {
-        m_idleFrames++;
-    } else {
-        m_idleFrames = std::max(0, m_idleFrames - 5);
+    if (speed < 0.5f) m_idleFrames++;
+    else              m_idleFrames = std::max(0, m_idleFrames - 5);
+
+    bool lethal = m_pool.collidesWithPlayer(m_player.getBounds());
+    if (lethal) {
+        getEventBus().publish({"PlayerCollision", {}});
+        getEventBus().publish({"RewardPenalty", 100.f});
     }
 
-    if (m_idleFrames > 100) {
-        reward -= 100.0f;
-        if (m_trainingMode) isDone = true;
-    }
+    // ── Delegate ALL reward calculation to the injected Strategy ────────────
+    EnvironmentContext ctx;
+    ctx.playerSpeed  = speed;
+    ctx.lethalCollision = lethal;
+    ctx.idleFrames   = m_idleFrames;
+    ctx.trainingMode = m_trainingMode;
 
-    if (m_pool.collidesWithPlayer(m_player.getBounds())) {
-        reward -= 100.f;
-        isDone = true;
-    }
+    RewardResult result = m_rewardStrategy->calculateReward(ctx);
+    reward = result.reward + bonus;
+    isDone = result.episodeDone;
 
-    addScore(1);
+    getEventBus().publish({"ScoreAdded", 1});
 
     if (reward != 0.15f) m_stepsSinceReward = 0;
     else                 ++m_stepsSinceReward;
     m_lastReward = reward;
 
     return getState();
+}
+
+// ─── Memento API ────────────────────────────────────────────────────────────
+struct Level1Snapshot : public InternalStateSnapshot {
+    SimulationEnvironment::BaseSnapshot base;
+    HydronautEntity::Snapshot           player;
+    ConvexObstaclePool::Snapshot        pool;
+    int                                 levelScore;
+    float                               speed;
+};
+
+std::unique_ptr<SimulationMemento> Level1::create_memento() const {
+    auto snap = std::make_unique<Level1Snapshot>();
+    snap->base       = saveBaseState();
+    snap->player     = m_player.saveState();
+    snap->pool       = m_pool.saveState();
+    snap->levelScore = m_score;
+    snap->speed      = m_speed;
+    return std::make_unique<SimulationMemento>(std::move(snap));
+}
+
+void Level1::restore_memento(const SimulationMemento& memento) {
+    const auto* snap = dynamic_cast<const Level1Snapshot*>(memento.m_state.get());
+    if (!snap) return;
+
+    restoreBaseState(snap->base);
+    m_player.restoreState(snap->player);
+    m_pool.restoreState(snap->pool, getSimSize());
+    m_score = snap->levelScore;
+    m_speed = snap->speed;
 }

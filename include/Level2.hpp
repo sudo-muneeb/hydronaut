@@ -1,14 +1,14 @@
 #pragma once
-#include "Level.hpp"
-#include "Player.hpp"
+#include "SimulationEnvironment.hpp"
+#include "HydronautEntity.hpp"
 #include "SineObstacle.hpp"
 #include "ParabolicObstacle.hpp"
 #include "Treasure.hpp"
 #include <vector>
 
-// ─── Level 2 — Arc of Chaos ───────────────────────────────────────────────────
+// ─── SimulationEnvironment 2 — Arc of Chaos ───────────────────────────────────────────────────
 // Sine-wave urchin + parabolic crab. Collect treasure chests to score.
-class Level2 : public Level {
+class Level2 : public SimulationEnvironment {
 public:
     explicit Level2(sf::RenderWindow& window);
 
@@ -18,14 +18,18 @@ public:
     std::vector<float> reset(sf::Vector2u windowSize)                     override;
     std::vector<float> step(int action, float& reward, bool& isDone)      override;
 
-    const Player& getPlayer() const override { return m_player; }
+    const HydronautEntity& getPlayer() const override { return m_player; }
+    HydronautEntity&       getPlayer()       override { return m_player; }
+
+    std::unique_ptr<SimulationMemento> create_memento() const override;
+    void restore_memento(const SimulationMemento& memento) override;
 
 protected:
     bool update() override;
     void draw()   override;
 
 private:
-    Player             m_player;
+    HydronautEntity    m_player;
     SineObstacle       m_sine;
     ParabolicObstacle  m_para;
     Treasure           m_treasure;

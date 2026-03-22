@@ -71,6 +71,11 @@ public:
     void setEpsilon(float eps) noexcept { m_epsilon = eps; }
     float getEpsilon() const noexcept   { return m_epsilon; }
 
+    // ── Ensure online net is in training mode ─────────────────────────────────
+    // Call this after load_model() as a defensive guard — the online net must
+    // always be in train() mode when learn() is invoked.
+    void ensureTrainMode() { m_onlineNet->train(); }
+
     // ── ε-greedy action selection ─────────────────────────────────────────────
     int choose_action(const std::vector<float>& state) {
         if (m_dis01(m_rng) < m_epsilon)
@@ -165,8 +170,8 @@ public:
 
     void load_model(const std::string& path) {
         torch::load(m_onlineNet, path);
-        hardUpdateTarget();   // sync target net after loading
-        m_onlineNet->eval();
+        hardUpdateTarget();    // sync target net after loading
+        m_onlineNet->train();  // MUST stay in train mode — eval() here is what caused weight corruption
         std::cout << "[DQNAgent] Model loaded from: " << path << "\n";
     }
 

@@ -46,7 +46,12 @@ void HumanTrainer::initIfNeeded() {
     } else {
         std::cout << "[HumanTrainer] No existing model found. Will train from scratch.\n";
     }
-    
+
+    // Defensive: ensure the online network is always in training mode before
+    // any learn() calls, regardless of what load_model() may have done internally.
+    // (The root cause of the model corruption bug was load_model calling eval().)
+    m_agent->ensureTrainMode();
+
     // Low epsilon since we're mostly learning off-policy from a human,
     // but the DQN structure still needs it for internal Q-updates.
     m_agent->setEpsilon(0.01f);

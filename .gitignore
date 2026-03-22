@@ -2,3 +2,6 @@ hydronaut
 
 libtorch
 build/
+
+*.pt
+*.log

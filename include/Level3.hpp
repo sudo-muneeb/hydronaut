@@ -1,14 +1,14 @@
 #pragma once
-#include "Level.hpp"
-#include "Player.hpp"
+#include "SimulationEnvironment.hpp"
+#include "HydronautEntity.hpp"
 #include "SecObstacle.hpp"
 #include "ExpSineObstacle.hpp"
 #include "Treasure.hpp"
 #include <vector>
 
-// ─── Level 3 — Waves of Danger ───────────────────────────────────────────────
+// ─── SimulationEnvironment 3 — Waves of Danger ───────────────────────────────────────────────
 // Secant-curve octopus + exponential-damped sine lanternfish. Collect treasure.
-class Level3 : public Level {
+class Level3 : public SimulationEnvironment {
 public:
     explicit Level3(sf::RenderWindow& window);
 
@@ -18,14 +18,18 @@ public:
     std::vector<float> reset(sf::Vector2u windowSize)                     override;
     std::vector<float> step(int action, float& reward, bool& isDone)      override;
 
-    const Player& getPlayer() const override { return m_player; }
+    const HydronautEntity& getPlayer() const override { return m_player; }
+    HydronautEntity&       getPlayer()       override { return m_player; }
+
+    std::unique_ptr<SimulationMemento> create_memento() const override;
+    void restore_memento(const SimulationMemento& memento) override;
 
 protected:
     bool update() override;
     void draw()   override;
 
 private:
-    Player          m_player;
+    HydronautEntity m_player;
     SecObstacle     m_sec;
     ExpSineObstacle m_expSine;
     Treasure        m_treasure;

@@ -57,3 +57,15 @@ void SineObstacle::draw(sf::RenderWindow& window) const noexcept {
 sf::FloatRect SineObstacle::getBounds() const noexcept {
     return m_sprite.getGlobalBounds();
 }
+
+// ─── Memento API ────────────────────────────────────────────────────────────
+SineObstacle::Snapshot SineObstacle::saveState() const {
+    return { m_x, m_speedMult, m_lastVel };
+}
+
+void SineObstacle::restoreState(const Snapshot& snap, sf::Vector2u windowSize) {
+    m_x         = snap.x;
+    m_speedMult = snap.speedMult;
+    m_lastVel   = snap.lastVel;
+    m_sprite.setPosition(m_x, sineY(m_x, windowSize));
+}

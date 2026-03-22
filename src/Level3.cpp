@@ -3,6 +3,8 @@
 #include "InputHandler.hpp"
 #include "SpriteBounds.hpp"
 #include "AssetManager.hpp"
+#include "EventBus.hpp"
+#include "RewardStrategy.hpp"
 #include <algorithm>
 #include <cmath>
 
@@ -13,12 +15,13 @@ static constexpr float REF_W         = 1920.f;
 static constexpr float REF_H         = 1080.f;
 
 Level3::Level3(sf::RenderWindow& window)
-    : Level(window)
+    : SimulationEnvironment(window)
     , m_player(window.getSize())
     , m_sec(window.getSize(), "octopus")
     , m_expSine(window.getSize(), "fish")
     , m_treasure(window.getSize())
 {
+    setRewardStrategy(std::make_unique<Level3RewardStrategy>());
 }
 
 // ─── RL Environment API Helper ──────────────────────────────────────────────────
@@ -39,7 +42,7 @@ bool Level3::update() {
 
     bool dashed = m_player.applyCommand(baseDir, dashRequest);
     m_player.update(dt);
-    if (dashed) triggerShake(DASH_SHAKE_FRAMES, DASH_SHAKE_INTENSITY);
+    if (dashed) getEventBus().publish({"ScreenShake", ShakeParams{DASH_SHAKE_FRAMES, DASH_SHAKE_INTENSITY}});
 
     m_sec.setSpeedMultiplier(sonar);
     m_expSine.setSpeedMultiplier(sonar);
@@ -51,7 +54,7 @@ bool Level3::update() {
     float dx = pC.x - tC.x,  dy = pC.y - tC.y;
     float curDist = std::sqrt(dx*dx + dy*dy);
 
-    float reward = 0.15f; // survival
+    float reward = 0.15f;
     if (m_prevDistToTreasure > 0.f) reward += (m_prevDistToTreasure - curDist) * 0.50f;
     m_prevDistToTreasure = curDist;
 
@@ -61,14 +64,16 @@ bool Level3::update() {
 
     if (m_player.getBounds().intersects(m_treasure.getBounds())) {
         m_treasure.respawn(winSize);
-        addScore(10);
-        reward += 100.f; // user requested this
+        getEventBus().publish({"TreasureCollected", {}});
+        getEventBus().publish({"ScoreAdded", 10});
+        getEventBus().publish({"RewardGranted", 100.f});
+        reward += 100.f;
         m_prevDistToTreasure = -1.f;
     }
 
     int gs = checkGraze(m_player.getGrazeBounds(), m_player.getBounds(), m_sec.getBounds());
     gs    += checkGraze(m_player.getGrazeBounds(), m_player.getBounds(), m_expSine.getBounds());
-    if (gs > 0) addScore(GRAZE_SCORE_PER_FRAME * gs);
+    if (gs > 0) getEventBus().publish({"GrazeScored", GRAZE_SCORE_PER_FRAME * gs});
 
     bool died = false;
     if (!m_player.isDashing()) {
@@ -77,15 +82,16 @@ bool Level3::update() {
                                 m_sec.getSprite(),    am.image("octopus"))  ||
             pixelPerfectOverlap(m_player.getSprite(), am.image("submarine"),
                                 m_expSine.getSprite(),am.image("fish")))    {
-            triggerShake(SHAKE_FRAMES_DEATH, SHAKE_INTENSITY_DEATH);
-            reward = -100.f; // user requested this
+            getEventBus().publish({"ScreenShake", ShakeParams{SHAKE_FRAMES_DEATH, SHAKE_INTENSITY_DEATH}});
+            getEventBus().publish({"PlayerCollision", {}});
+            getEventBus().publish({"RewardPenalty", 100.f});
+            reward = -100.f;
             died = true;
         }
     }
 
     m_stepsSinceReward = (reward > 0.f) ? 0 : m_stepsSinceReward + 1;
     m_lastReward = reward;
-
     return died;
 }
 
@@ -172,8 +178,6 @@ std::vector<float> Level3::step(int action, float& reward, bool& isDone) {
     auto  winSize = getSimSize();
     float dt      = 1.f / 60.f;
 
-    // RL path: use applyAction (PLAYER_ACCEL*4 impulse) — same authority as
-    // human multi-frame key-hold.  applyCommand would be 4× weaker.
     float bonus = applyAction(m_player, action);
     m_player.setWindowSize(winSize);
     m_player.update(dt);
@@ -187,50 +191,83 @@ std::vector<float> Level3::step(int action, float& reward, bool& isDone) {
     float dx = pC.x - tC.x,  dy = pC.y - tC.y;
     float curDist = std::sqrt(dx*dx + dy*dy);
 
-    // ── Survival reward & abilities ─────────────────────────────────────
-    reward = 0.15f + bonus;
-
-    // ── Approach shaping ────────────────────────────────────────────────
-    if (m_prevDistToTreasure > 0.f) {
-        float approach = (m_prevDistToTreasure - curDist) * 0.05f;
-        reward += approach;
-    }
-    m_prevDistToTreasure = curDist;
-
-    // ── Idleness penalty ────────────────────────────────────────────────
     sf::Vector2f vel = m_player.getVelocity();
     float speed = std::sqrt(vel.x * vel.x + vel.y * vel.y);
-    if (speed < 0.5f) {
-        m_idleFrames++;
-    } else {
-        m_idleFrames = std::max(0, m_idleFrames - 5);
-    }
+    if (speed < 0.5f) m_idleFrames++;
+    else              m_idleFrames = std::max(0, m_idleFrames - 5);
 
-    if (m_idleFrames > 100) {
-        reward -= 100.0f;
-        if (m_trainingMode) isDone = true;
-    }
-
-    // ── Treasure collected ──────────────────────────────────────────────
-    if (m_player.getBounds().intersects(m_treasure.getBounds())) {
+    bool treasureCollected = m_player.getBounds().intersects(m_treasure.getBounds());
+    if (treasureCollected) {
         m_treasure.respawn(winSize);
-        addScore(10);
-        reward += 100.f; // user requested +100
+        getEventBus().publish({"TreasureCollected", {}});
+        getEventBus().publish({"ScoreAdded", 10});
+        getEventBus().publish({"RewardGranted", 100.f});
         m_prevDistToTreasure = -1.f;
     }
 
-    // ── Lethal collision ────────────────────────────────────────────────
     auto& am = AssetManager::instance();
-    if (pixelPerfectOverlap(m_player.getSprite(), am.image("submarine"),
-                            m_sec.getSprite(),    am.image("octopus"))  ||
-        pixelPerfectOverlap(m_player.getSprite(), am.image("submarine"),
-                            m_expSine.getSprite(),am.image("fish")))    {
-        reward  -= 100.f; // user requested -100
-        isDone  = true;
+    bool lethal = pixelPerfectOverlap(m_player.getSprite(), am.image("submarine"),
+                                      m_sec.getSprite(),    am.image("octopus")) ||
+                  pixelPerfectOverlap(m_player.getSprite(), am.image("submarine"),
+                                      m_expSine.getSprite(),am.image("fish"));
+    if (lethal) {
+        getEventBus().publish({"PlayerCollision", {}});
+        getEventBus().publish({"RewardPenalty", 100.f});
     }
+
+    // ── Delegate ALL reward calculation to the injected Strategy ────────────
+    EnvironmentContext ctx;
+    ctx.playerSpeed         = speed;
+    ctx.treasureCollected   = treasureCollected;
+    ctx.lethalCollision     = lethal;
+    ctx.distToTreasure      = curDist;
+    ctx.prevDistToTreasure  = m_prevDistToTreasure;
+    ctx.idleFrames          = m_idleFrames;
+    ctx.trainingMode        = m_trainingMode;
+
+    if (!treasureCollected) m_prevDistToTreasure = curDist;
+
+    RewardResult result = m_rewardStrategy->calculateReward(ctx);
+    reward  = result.reward + bonus;
+    isDone |= result.episodeDone;
 
     m_stepsSinceReward = (reward > 0.f) ? 0 : m_stepsSinceReward + 1;
     m_lastReward = reward;
 
+    m_lastReward = reward;
+
     return getState();
+}
+
+// ─── Memento API ────────────────────────────────────────────────────────────
+struct Level3Snapshot : public InternalStateSnapshot {
+    SimulationEnvironment::BaseSnapshot base;
+    HydronautEntity::Snapshot           player;
+    SecObstacle::Snapshot               sec;
+    ExpSineObstacle::Snapshot           expSine;
+    Treasure::Snapshot                  treasure;
+    float                               prevDistToTreasure;
+};
+
+std::unique_ptr<SimulationMemento> Level3::create_memento() const {
+    auto snap = std::make_unique<Level3Snapshot>();
+    snap->base               = saveBaseState();
+    snap->player             = m_player.saveState();
+    snap->sec                = m_sec.saveState();
+    snap->expSine            = m_expSine.saveState();
+    snap->treasure           = m_treasure.saveState();
+    snap->prevDistToTreasure = m_prevDistToTreasure;
+    return std::make_unique<SimulationMemento>(std::move(snap));
+}
+
+void Level3::restore_memento(const SimulationMemento& memento) {
+    const auto* snap = dynamic_cast<const Level3Snapshot*>(memento.m_state.get());
+    if (!snap) return;
+
+    restoreBaseState(snap->base);
+    m_player.restoreState(snap->player);
+    m_sec.restoreState(snap->sec, getSimSize());
+    m_expSine.restoreState(snap->expSine, getSimSize());
+    m_treasure.restoreState(snap->treasure);
+    m_prevDistToTreasure = snap->prevDistToTreasure;
 }

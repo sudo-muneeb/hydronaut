@@ -21,7 +21,7 @@ find_package(SFML 2.5 COMPONENTS graphics window system audio REQUIRED)
 # All game source files EXCEPT main executables.
 add_library(hydronaut_lib STATIC
     src/AssetManager.cpp
-    src/Player.cpp
+
     src/Particle.cpp
     src/ConvexObstacle.cpp
     src/SineObstacle.cpp
@@ -29,12 +29,17 @@ add_library(hydronaut_lib STATIC
     src/SecObstacle.cpp
     src/ExpSineObstacle.cpp
     src/Treasure.cpp
-    src/Level.cpp
+    src/SimulationEnvironment.cpp
     src/Level1.cpp
     src/Level2.cpp
     src/Level3.cpp
     src/Menu.cpp
     src/HumanTrainer.cpp
+    src/CommandQueue.cpp
+    src/EventBus.cpp
+    src/HydronautEntity.cpp
+    src/EntityState.cpp
+    src/RewardStrategy.cpp
 )
 
 target_include_directories(hydronaut_lib PUBLIC
@@ -90,3 +95,7 @@ message(STATUS "    cmake --build build -j\$(nproc)")
 message(STATUS "    cd build && ./train_hydronaut")
 message(STATUS "    cd build && ./play_hydronaut 2   # or 1 or 3")
 message(STATUS "")
+
+# ─── Mock Executable ──────────────────────────────────────────────────────────
+add_executable(mock_memento src/mock_memento.cpp)
+target_link_libraries(mock_memento PRIVATE hydronaut_lib)

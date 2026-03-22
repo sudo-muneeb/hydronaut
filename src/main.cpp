@@ -4,74 +4,82 @@
 #include <memory>
 #include <stdexcept>
 
+// ─── Interfaces & Adapters ────────────────────────────────────────────────────
+// IInterfaces.hpp  — pure abstract base classes (no SFML / concrete deps)
+// SFMLAdapters.hpp — concrete adapter implementations (the ONLY place concrete
+//                    classes such as Level1, Menu, AssetManager are #included)
+// GameApp.hpp      — fully decoupled game-loop class (depends only on interfaces)
 #include "Constants.hpp"
-#include "AssetManager.hpp"
-#include "Menu.hpp"
-#include "Level1.hpp"
-#include "Level2.hpp"
-#include "Level3.hpp"
-#include "Settings.hpp"
-#include "HumanTrainer.hpp"
+#include "IInterfaces.hpp"
+#include "SFMLAdapters.hpp"
+#include "GameApp.hpp"
 
+// ─── Composition Root ─────────────────────────────────────────────────────────
+// main() is the ONLY function in the project permitted to name concrete types.
+// Its sole responsibility is to wire up the dependency graph and hand control
+// to the abstract IGameApp::run().
 int main() {
     try {
-        // ─── Window at full desktop resolution ────────────────────────────
-        // Use the actual screen size at runtime so the game always fills the
-        // display on any monitor without hardcoded dimensions.
+        // ── 1. Create the OS window (concrete SFML type lives only here) ──
         sf::VideoMode desktop = sf::VideoMode::getDesktopMode();
 
-        sf::RenderWindow window(
+        auto sfmlWindow = std::make_unique<sf::RenderWindow>(
             desktop,
             "Hydronaut",
-            sf::Style::Default   // resizable, decorated
+            sf::Style::Default
         );
-        window.setFramerateLimit(60);
-
-        // Set the logical view to match the physical window exactly.
-        window.setView(sf::View(sf::FloatRect(
+        sfmlWindow->setFramerateLimit(60);
+        sfmlWindow->setView(sf::View(sf::FloatRect(
             0.f, 0.f,
             static_cast<float>(desktop.width),
             static_cast<float>(desktop.height))));
 
-        // ─── Assets ───────────────────────────────────────────────────────
-        AssetManager::instance().loadAll();
+        // Keep a raw reference so the factories can forward it to Levels/Menus
+        // without the adapters needing to own the window.
+        sf::RenderWindow& windowRef = *sfmlWindow;
 
-        // ─── Background music ─────────────────────────────────────────────
-        sf::Music music;
-        bool musicOk = music.openFromFile(ASSET_MUSIC);
-        if (musicOk) {
-            music.setLoop(true);
-            auto& s = Settings::instance();
-            music.setVolume(s.isMuted() ? 0.f : s.getVolume());
-            music.play();
-        } else {
-            std::cerr << "[WARNING] Music file not found: " << ASSET_MUSIC << "\n";
-        }
+        // ── 2. Build the SFMLMusicAdapter and get the underlying sf::Music* ─
+        // SFMLMenuFactory needs a nullable sf::Music* for the settings panel;
+        // we expose it via a second raw pointer after construction. We declare
+        // the adapter first so its lifetime covers GameApp::run().
+        auto musicAdapter = std::make_unique<SFMLMusicAdapter>();
+        // Cast back to concrete only here in the composition root to extract the
+        // underlying pointer for SFMLMenuFactory. GameApp never sees sf::Music.
+        sf::Music* rawMusic = nullptr;   // will be set after openFromFile attempt
 
-        // ─── Main game loop ───────────────────────────────────────────────
-        while (window.isOpen()) {
-            Menu menu(window, musicOk ? &music : nullptr);
-            int choice = menu.run();
+        // ── 3. Assemble the dependency graph via abstract interfaces ─────────
 
-            if (choice == -1 || !window.isOpen())
-                break;
+        // window adapter
+        auto windowAdapter  = std::make_unique<SFMLWindowAdapter>(windowRef);
 
-            std::unique_ptr<Level> level;
-            switch (choice) {
-                case 1: level = std::make_unique<Level1>(window); break;
-                case 2: level = std::make_unique<Level2>(window); break;
-                case 3: level = std::make_unique<Level3>(window); break;
-                default: break;
-            }
+        // shared stateless services
+        auto assetManager   = std::make_shared<AssetManagerAdapter>();
+        auto settings       = std::make_shared<SettingsAdapter>();
+        auto trainer        = std::make_shared<HumanTrainerAdapter>();
 
-            if (level) {
-                try {
-                    level->run();
-                } catch (const std::exception& e) {
-                    std::cerr << "[ERROR] Level crashed: " << e.what() << "\n";
-                }
-            }
-        }
+        // factories (need the raw window/music for forwarding to concrete ctors)
+        // Music pointer is null until openFromFile succeeds inside GameApp::run();
+        // we use a deferred init pattern via a small wrapper below.
+        //
+        // For SFMLMenuFactory we pass rawMusic (nullptr for now); it remains
+        // safely nullable — Menu treats nullptr as "no music attached".
+        auto menuFactory    = std::make_unique<SFMLMenuFactory>(windowRef, rawMusic);
+        auto levelFactory   = std::make_unique<SFMLLevelFactory>(windowRef);
+
+        // ── 4. Construct GameApp — no concrete type appears in this call ──────
+        GameApp app(
+            std::move(windowAdapter),
+            std::move(musicAdapter),
+            assetManager,
+            settings,
+            trainer,
+            std::move(menuFactory),
+            std::move(levelFactory),
+            std::string(ASSET_MUSIC)   // music file path injected as plain string
+        );
+
+        // ── 5. Run — all logic is now inside the decoupled GameApp ────────────
+        app.run();
 
     } catch (const std::exception& e) {
         std::cerr << "[FATAL] " << e.what() << "\n";
@@ -80,9 +88,6 @@ int main() {
         std::cerr << "[FATAL] Unknown exception.\n";
         return EXIT_FAILURE;
     }
-
-    // Safely shutdown HumanTrainer (and its PyTorch models) before exit
-    HumanTrainer::instance().shutdown();
 
     return EXIT_SUCCESS;
 }

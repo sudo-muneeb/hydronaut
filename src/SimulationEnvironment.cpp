@@ -1,10 +1,13 @@
-#include "Level.hpp"
-#include "Player.hpp"
+#include "SimulationEnvironment.hpp"
+
+#include "HydronautEntity.hpp"
 #include "AssetManager.hpp"
 #include "Constants.hpp"
 #include "Settings.hpp"
 #include "HumanTrainer.hpp"
 #include "InputHandler.hpp"
+#include "EventBus.hpp"
+#include "GameObservers.hpp"
 #include <cstdlib>
 #include <cmath>
 #include <string>
@@ -15,9 +18,8 @@ static sf::Vector2f viewSize(const sf::RenderWindow& w) {
     return w.getView().getSize();
 }
 
-Level::Level(sf::RenderWindow& window) : m_window(window) {
-    // ── Initialise base view from the ACTUAL current window size, not the
-    //    stale default view (which stays 900×900 even after OS resizes).
+SimulationEnvironment::SimulationEnvironment(sf::RenderWindow& window) : m_window(window) {
+    // ── Initialise base view from the ACTUAL current window size
     auto sz     = m_window.getSize();
     m_baseView  = sf::View(sf::FloatRect(0.f, 0.f,
                                          static_cast<float>(sz.x),
@@ -25,9 +27,6 @@ Level::Level(sf::RenderWindow& window) : m_window(window) {
     m_window.setView(m_baseView);
 
     auto& font = AssetManager::instance().font();
-
-    // Font sizes are set dynamically in drawHUD() relative to view height —
-    // just initialise with a default here.
     m_scoreText.setFont(font);
     m_scoreText.setFillColor(sf::Color::White);
     m_scoreText.setOutlineColor(sf::Color(0, 0, 80));
@@ -43,10 +42,32 @@ Level::Level(sf::RenderWindow& window) : m_window(window) {
     m_pauseText.setOutlineColor(sf::Color::Black);
     m_pauseText.setOutlineThickness(3.f);
     m_pauseText.setString("PAUSED\nPress P to resume | ESC to quit");
+
+    // ── Wire up EventBus observers ───────────────────────────────────────────
+    // ScoreObserver: reacts to "ScoreAdded" and "GrazeScored"
+    m_scoreObs = std::make_unique<ScoreObserver>(m_score, m_grazeAcc);
+    m_bus.subscribe("ScoreAdded",  m_scoreObs.get());
+    m_bus.subscribe("GrazeScored", m_scoreObs.get());
+
+    // RewardObserver: reacts to "RewardGranted" and "RewardPenalty"
+    m_rewardObs = std::make_unique<RewardObserver>(m_lastReward, m_stepsSinceReward, m_lastReward);
+    m_bus.subscribe("RewardGranted", m_rewardObs.get());
+    m_bus.subscribe("RewardPenalty", m_rewardObs.get());
+
+    // ShakeObserver: reacts to "ScreenShake" and fires triggerShake()
+    m_shakeObs = std::make_unique<ShakeObserver>(
+        [this](int f, float i) { triggerShake(f, i); }
+    );
+    m_bus.subscribe("ScreenShake", m_shakeObs.get());
+
+    // TelemetryObserver: diagnostics — subscribe to key events
+    m_telemetryObs = std::make_unique<TelemetryObserver>();
+    m_bus.subscribe("PlayerCollision",   m_telemetryObs.get());
+    m_bus.subscribe("TreasureCollected", m_telemetryObs.get());
 }
 
 // ─── Main game loop ───────────────────────────────────────────────────────────
-int Level::run() {
+int SimulationEnvironment::run() {
     sf::Clock frameClock;
 
     while (m_window.isOpen() && !m_gameOver) {
@@ -89,18 +110,25 @@ int Level::run() {
 
         bool train = Settings::instance().isTrainOnPlay() && !m_trainingMode;
         std::vector<float> state;
-        int action = -1;
+        int legacyAction = -1;
         if (train) {
             state = getState();
-            action = InputHandler::pollCompositeAction();
+            legacyAction = InputHandler::pollCompositeAction();
+            InputHandler::pollAndQueue(m_cmdQueue);
+        } else {
+            // Even if not training natively, we map keyboard to queue for the game
+            InputHandler::pollAndQueue(m_cmdQueue);
         }
+
+        // Process all commands (execute pattern)
+        m_cmdQueue.process(*this);
 
         sf::Clock logicClock;
         bool died = update();  // derived class
         m_logicTimeMs = logicClock.getElapsedTime().asSeconds() * 1000.f;
 
-        if (train && action >= 0 && action <= 14) {
-            HumanTrainer::instance().recordExperience(state, action, m_lastReward, getState(), died);
+        if (train && legacyAction >= 0 && legacyAction <= 14) {
+            HumanTrainer::instance().recordExperience(state, legacyAction, m_lastReward, getState(), died);
         }
 
         draw();                // derived class
@@ -124,7 +152,7 @@ int Level::run() {
 }
 
 // ─── Event handling ───────────────────────────────────────────────────────────
-void Level::handleEvents() {
+void SimulationEnvironment::handleEvents() {
     sf::Event event;
     while (m_window.pollEvent(event)) {
         if (event.type == sf::Event::Closed) {
@@ -151,23 +179,6 @@ void Level::handleEvents() {
             event.key.code == sf::Keyboard::Escape)
             m_gameOver = true;
 
-        // Sonar pulse (X) - we removed m_xKeyDown logic as we now poll X as a continuous ability via InputHandler
-        // However, the visual expanding sonar ring logic relies on m_xKeyDown in this event handler to not reset the ring constantly.
-        // Wait, no - earlier the user asked "what is the purpose of this". We should keep the cooldown logic but remove the visual 'canFire' check from here since the baseDir+sonar command applies it in applyAction.
-        // Actually, no. Let's just fix the brace right now so it compiles as it was, minus the m_xKeyDown check.
-        if (event.type == sf::Event::KeyPressed &&
-            event.key.code == sf::Keyboard::X) {
-            bool canFire = !m_sonarActive &&
-                           (!m_sonarFired ||
-                            m_sonarCooldownClock.getElapsedTime().asSeconds() >= SONAR_COOLDOWN_SEC);
-            if (canFire) {
-                m_sonarActive = true;
-                m_sonarRadius = 0.f;
-                // Centre sonar on current view centre (logical coords)
-                m_sonarCenter = m_baseView.getCenter();
-            }
-        }
-
         if (event.type == sf::Event::KeyPressed &&
             event.key.code == sf::Keyboard::F3)
             m_debugMode = !m_debugMode;
@@ -185,7 +196,7 @@ void Level::handleEvents() {
 }
 
 // ─── Screen shake ─────────────────────────────────────────────────────────────
-void Level::triggerShake(int frames, float intensity) noexcept {
+void SimulationEnvironment::triggerShake(int frames, float intensity) noexcept {
     m_shakeFrames    = frames;
     m_shakeIntensity = intensity;
 }
@@ -193,7 +204,7 @@ void Level::triggerShake(int frames, float intensity) noexcept {
 // ─── Inference rendering ────────────────────────────────────────────────
 // Renders one visual frame (background, sprites, sonar, HUD) without calling
 // update() or polling input.  Mirrors the render block inside run().
-void Level::renderFrame() {
+void SimulationEnvironment::renderFrame() {
     m_window.clear();
     applyShake();
     drawBackground();
@@ -208,7 +219,7 @@ void Level::renderFrame() {
 
 // ─── Virtual size ─────────────────────────────────────────────────────────────
 // Overrides the physics/state coordinate space without resizing the OS window.
-void Level::setVirtualSize(sf::Vector2u sz) noexcept {
+void SimulationEnvironment::setVirtualSize(sf::Vector2u sz) noexcept {
     m_virtualSize = sz;
     m_baseView = sf::View(sf::FloatRect(
         0.f, 0.f,
@@ -216,47 +227,64 @@ void Level::setVirtualSize(sf::Vector2u sz) noexcept {
     m_window.setView(m_baseView);
 }
 
-sf::Vector2u Level::getSimSize() const noexcept {
+sf::Vector2u SimulationEnvironment::getSimSize() const noexcept {
     return (m_virtualSize.x > 0 && m_virtualSize.y > 0)
                ? m_virtualSize
                : m_window.getSize();
 }
 
 
-// Action space: 0-14 composite action.
-// Base: 0=Up, 1=Down, 2=Left, 3=Right, 4=None
-// Modifier: +5 for Dash space, +10 for Sonar X
-float Level::applyAction(Player& player, int action) noexcept {
+// ─── ICommandTarget Implementation ────────────────────────────────────────────
+void SimulationEnvironment::move(int baseDir) {
+    getPlayer().applyCommand(baseDir, false);
+}
+
+void SimulationEnvironment::dash() {
+    bool dashed = getPlayer().applyCommand(4, true);
+    if (dashed) triggerShake(DASH_SHAKE_FRAMES, DASH_SHAKE_INTENSITY);
+}
+
+void SimulationEnvironment::triggerSonar() {
+    bool canFire = !m_sonarActive &&
+                   (!m_sonarFired ||
+                    m_sonarCooldownClock.getElapsedTime().asSeconds() >= SONAR_COOLDOWN_SEC);
+    if (canFire) {
+        m_sonarActive = true;
+        m_sonarRadius = 0.f;
+        m_sonarCenter = m_baseView.getCenter();
+        m_lastReward += 1.0f; // Sonar bonus
+    }
+}
+
+void SimulationEnvironment::idle() {
+    getPlayer().applyCommand(4, false); // 4 = None
+}
+
+// ─── RL / Agent Action Applicator ─────────────────────────────────────────────
+float SimulationEnvironment::applyAction(HydronautEntity& entity, int action) noexcept {
     int  baseDir;
     bool dashReq;
     bool sonarReq;
     InputHandler::decodeAction(action, baseDir, dashReq, sonarReq);
 
-    float bonus = 0.0f;
+    float preReward = m_lastReward;
 
-    // 1. Movement & Dash
-    // We use the same Player::applyCommand interface that the human uses,
-    // which handles the dash multiplier and cooldowns exactly like human play.
-    bool dashed = player.applyCommand(baseDir, dashReq);
-    if (dashed) triggerShake(DASH_SHAKE_FRAMES, DASH_SHAKE_INTENSITY);
+    if (baseDir < 4) m_cmdQueue.push(std::make_unique<MoveCommand>(baseDir));
+    else             m_cmdQueue.push(std::make_unique<IdleCommand>());
 
-    // 2. Sonar
-    if (sonarReq) {
-        bool canFire = !m_sonarActive &&
-                       (!m_sonarFired ||
-                        m_sonarCooldownClock.getElapsedTime().asSeconds() >= SONAR_COOLDOWN_SEC);
-        if (canFire) {
-            m_sonarActive = true;
-            m_sonarRadius = 0.f;
-            m_sonarCenter = m_baseView.getCenter();
-            bonus += 1.0f; // Reward for using ability successfully
-        }
-    }
-    
-    return bonus;
+    if (sonarReq)    m_cmdQueue.push(std::make_unique<SonarCommand>());
+    else if (dashReq) m_cmdQueue.push(std::make_unique<DashCommand>());
+
+    m_cmdQueue.process(*this);
+
+    // Any positive bonus (like the sonar +1.0f) applied during execution is returned
+    // so the derived `step()` function can sum it into the step reward cleanly.
+    float bonusAccrued = m_lastReward - preReward;
+    m_lastReward = preReward; // restore, derivative sets it properly later
+    return std::max(0.0f, bonusAccrued);
 }
 
-void Level::applyShake() {
+void SimulationEnvironment::applyShake() {
     if (m_shakeFrames <= 0) {
         m_window.setView(m_baseView);
         return;
@@ -269,22 +297,22 @@ void Level::applyShake() {
     m_window.setView(sv);
 }
 
-void Level::restoreView() {
+void SimulationEnvironment::restoreView() {
     m_window.setView(m_baseView);
 }
 
 // ─── Sonar ───────────────────────────────────────────────────────────────────
-float Level::getSonarFactor() const noexcept {
+float SimulationEnvironment::getSonarFactor() const noexcept {
     return m_sonarActive ? SONAR_SLOW_FACTOR : 1.0f;
 }
 
-bool Level::isSonarReady() const noexcept {
+bool SimulationEnvironment::isSonarReady() const noexcept {
     return !m_sonarActive &&
            (!m_sonarFired ||
             m_sonarCooldownClock.getElapsedTime().asSeconds() >= SONAR_COOLDOWN_SEC);
 }
 
-void Level::drawSonarRing() {
+void SimulationEnvironment::drawSonarRing() {
     if (!m_sonarActive || m_sonarRadius <= 0.f) return;
     float alpha = 255.f * (1.f - m_sonarRadius / SONAR_MAX_RADIUS);
 
@@ -308,7 +336,7 @@ void Level::drawSonarRing() {
 }
 
 // ─── Graze ────────────────────────────────────────────────────────────────────
-int Level::checkGraze(sf::FloatRect playerGraze,
+int SimulationEnvironment::checkGraze(sf::FloatRect playerGraze,
                        sf::FloatRect playerCore,
                        sf::FloatRect obstacleBox) const noexcept {
     if (playerCore.intersects(obstacleBox))  return 0;
@@ -316,14 +344,9 @@ int Level::checkGraze(sf::FloatRect playerGraze,
     return 0;
 }
 
-void Level::addScore(int amount) noexcept {
-    m_score    += amount;
-    m_grazeAcc += (amount <= GRAZE_SCORE_PER_FRAME * 2) ? amount : 0;
-}
-
 // ─── Background ───────────────────────────────────────────────────────────────
 // Uses view size (logical coords), NOT physical window.getSize().
-void Level::drawBackground() {
+void SimulationEnvironment::drawBackground() {
     sf::Vector2f vs = viewSize(m_window);
     sf::VertexArray bg(sf::Quads, 4);
     bg[0] = sf::Vertex(sf::Vector2f(0,     0    ), sf::Color(0,  15,  60));
@@ -335,7 +358,7 @@ void Level::drawBackground() {
 
 // ─── HUD ─────────────────────────────────────────────────────────────────────
 // All sizes and positions are proportional to the current VIEW size.
-void Level::drawHUD() {
+void SimulationEnvironment::drawHUD() {
     sf::Vector2f vs    = viewSize(m_window);
     float        hScale = vs.y / 900.f;   // scale factor relative to 900-unit reference
 
@@ -462,7 +485,7 @@ void Level::drawHUD() {
     m_window.draw(ctrl);
 }
 
-void Level::drawGrazeHUD() {
+void SimulationEnvironment::drawGrazeHUD() {
     if (m_grazeAcc == 0) return;
     sf::Vector2f vs    = viewSize(m_window);
     float        hScale = vs.y / 900.f;
@@ -475,14 +498,14 @@ void Level::drawGrazeHUD() {
 }
 
 // ─── Debug overlay ────────────────────────────────────────────────────────────
-void Level::drawDebugOverlay() {
+void SimulationEnvironment::drawDebugOverlay() {
     // Hitbox drawing is delegated to Player::drawDebugHitboxes() and
     // per-level obstacle debug code, called from the derived draw().
     // Nothing extra needed here.
 }
 
 // ─── Pause overlay ────────────────────────────────────────────────────────────
-void Level::showPauseOverlay() {
+void SimulationEnvironment::showPauseOverlay() {
     sf::Vector2f vs    = viewSize(m_window);
     float        hScale = vs.y / 900.f;
 
@@ -499,7 +522,7 @@ void Level::showPauseOverlay() {
 }
 
 // ─── Game over ────────────────────────────────────────────────────────────────
-void Level::showGameOver() {
+void SimulationEnvironment::showGameOver() {
     if (!m_window.isOpen()) return;
     triggerShake(SHAKE_FRAMES_DEATH, SHAKE_INTENSITY_DEATH);
 
@@ -535,7 +558,7 @@ void Level::showGameOver() {
 }
 
 // ─── Metrics Overlay ──────────────────────────────────────────────────────────
-void Level::drawMetricsOverlay() {
+void SimulationEnvironment::drawMetricsOverlay() {
     sf::Vector2f vs = m_baseView.getSize();
 
     sf::Text txt;
@@ -555,3 +578,43 @@ void Level::drawMetricsOverlay() {
     m_window.draw(txt);
 }
 
+// ─── Base Memento API ────────────────────────────────────────────────────────
+SimulationEnvironment::BaseSnapshot SimulationEnvironment::saveBaseState() const {
+    BaseSnapshot snap;
+    snap.stepsSinceReward     = m_stepsSinceReward;
+    snap.lastReward           = m_lastReward;
+    snap.idleFrames           = m_idleFrames;
+    snap.paused               = m_paused;
+    snap.gameOver             = m_gameOver;
+    snap.score                = m_score;
+    snap.grazeAcc             = m_grazeAcc;
+    snap.shakeFrames          = m_shakeFrames;
+    snap.shakeIntensity       = m_shakeIntensity;
+    snap.sonarActive          = m_sonarActive;
+    snap.sonarRadius          = m_sonarRadius;
+    snap.sonarCenter          = m_sonarCenter;
+    snap.sonarFired           = m_sonarFired;
+    snap.sonarClockSec        = m_sonarClock.getElapsedTime().asSeconds();
+    snap.sonarCooldownClockSec= m_sonarCooldownClock.getElapsedTime().asSeconds();
+    return snap;
+}
+
+void SimulationEnvironment::restoreBaseState(const BaseSnapshot& snap) {
+    m_stepsSinceReward = snap.stepsSinceReward;
+    m_lastReward       = snap.lastReward;
+    m_idleFrames       = snap.idleFrames;
+    m_paused           = snap.paused;
+    m_gameOver         = snap.gameOver;
+    m_score            = snap.score;
+    m_grazeAcc         = snap.grazeAcc;
+    m_shakeFrames      = snap.shakeFrames;
+    m_shakeIntensity   = snap.shakeIntensity;
+    m_sonarActive      = snap.sonarActive;
+    m_sonarRadius      = snap.sonarRadius;
+    m_sonarCenter      = snap.sonarCenter;
+    m_sonarFired       = snap.sonarFired;
+    // For Memento reset, accepting slight SFML clock drift is fine since
+    // it's mainly for exact physics/logic reproduction which is controlled by frame deltas.
+    // The visual cooldown timer might have a sub-second desync on load but logic aligns
+    // with m_sonarFired and elapsed time checks.
+}

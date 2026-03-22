@@ -1,21 +1,14 @@
 #pragma once
 #include <SFML/Window/Keyboard.hpp>
+#include "CommandQueue.hpp"
+#include <memory>
 
 // ─── InputHandler ─────────────────────────────────────────────────────────────
-// Translates live keyboard state into the same discrete action enum used by
-// the RL agent, so the engine (Player, Level) is never coupled to the UI.
-//
-//   action = baseDir + 5 * modifier
-//
-//   Base Direction:
-//     0 = Up    1 = Down    2 = Left    3 = Right    4 = None
-//   Modifier:
-//     0 = Normal (0-4)
-//     1 = Dash pressed (+5)
-//     2 = Sonar pressed (+10)
-//     (If both Dash & Sonar pressed, Sonar takes priority here for simplicity)
+// Translates live keyboard state into discrete Command objects for telemetry
+// and decoupled execution, as well as preserving the legacy 0-14 composite
+// action format for the RL agent's replay buffer.
 struct InputHandler {
-    // Returns the composite 0-14 action index
+    // Legacy mapping for RL HumanTrainer
     static int pollCompositeAction() noexcept {
         int base = 4; // None
         if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up))    base = 0;
@@ -30,11 +23,31 @@ struct InputHandler {
         return base + (mod * 5);
     }
     
-    // For convenience in Level::update() to un-pack the composite action
     static void decodeAction(int composite, int& baseDir, bool& isDash, bool& isSonar) noexcept {
         baseDir = composite % 5;
         int mod = composite / 5;
         isDash  = (mod == 1);
         isSonar = (mod == 2);
+    }
+
+    // Command Factory & Telemetry Queueing
+    static void pollAndQueue(CommandQueue& queue) {
+        int baseDir; bool isDash; bool isSonar;
+        int action = pollCompositeAction();
+        decodeAction(action, baseDir, isDash, isSonar);
+
+        // Core movement command (or idle)
+        if (baseDir < 4) {
+            queue.push(std::make_unique<MoveCommand>(baseDir));
+        } else {
+            queue.push(std::make_unique<IdleCommand>());
+        }
+
+        // Abilities (dash and sonar prioritize sonar in the integer logic)
+        if (isSonar) {
+            queue.push(std::make_unique<SonarCommand>());
+        } else if (isDash) {
+            queue.push(std::make_unique<DashCommand>());
+        }
     }
 };

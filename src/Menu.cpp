@@ -115,7 +115,7 @@ void Menu::drawBackground() {
         sub.setFillColor(sf::Color(255, 200, 100));
         sub.setOutlineColor(sf::Color(80, 40, 0));
         sub.setOutlineThickness(2.f * hScale);
-        sub.setString("Select Level");
+        sub.setString("Select SimulationEnvironment");
         sf::FloatRect sb = sub.getLocalBounds();
         sub.setOrigin(sb.width / 2.f, sb.height / 2.f);
         sub.setPosition(vs.x / 2.f, vs.y * 0.30f);
@@ -178,7 +178,7 @@ int Menu::run() {
                     }
                 } else if (code == sf::Keyboard::Enter) {
                     if (m_state == State::Main) {
-                        if (sel < 3) return sel + 1; // Level 1,2,3
+                        if (sel < 3) return sel + 1; // SimulationEnvironment 1,2,3
                         if (sel == 3) {
                             m_state = State::Settings;
                             buildStrings();

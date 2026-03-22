@@ -42,7 +42,7 @@ int main(int argc, char* argv[]) {
 
         sf::RenderWindow window(
             desktop,
-            "Hydronaut — AI Play  (Level " + std::to_string(levelChoice) + ")",
+            "Hydronaut — AI Play  (SimulationEnvironment " + std::to_string(levelChoice) + ")",
             sf::Style::Default);
         window.setFramerateLimit(60);
 
@@ -54,7 +54,7 @@ int main(int argc, char* argv[]) {
         }
 
         // ── Build level ──────────────────────────────────────────────────────
-        std::unique_ptr<Level> env;
+        std::unique_ptr<SimulationEnvironment> env;
         switch (levelChoice) {
             case 1:  env = std::make_unique<Level1>(window); break;
             case 2:  env = std::make_unique<Level2>(window); break;
@@ -67,7 +67,7 @@ int main(int argc, char* argv[]) {
         agent.load_model(MODEL_PATH);
         agent.setEpsilon(0.0f);
 
-        std::cout << "[play] Level " << levelChoice
+        std::cout << "[play] SimulationEnvironment " << levelChoice
                   << " | State dim: " << DQNAgent::STATE_DIM
                   << " | Action hold: " << HOLD_MIN << "-" << HOLD_MAX << " frames\n"
                   << "       ESC or close window to quit.\n\n";

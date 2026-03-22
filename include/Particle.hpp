@@ -13,7 +13,7 @@ struct Particle {
 
 // ─── Particle emitter owned by the Player ────────────────────────────────────
 // Spawns bubble/wake particles at the submarine rear.
-// Updated and drawn every frame via the Level draw step.
+// Updated and drawn every frame via the SimulationEnvironment draw step.
 class ParticleEmitter {
 public:
     // Spawn N bubbles at 'origin' with a base drift velocity.

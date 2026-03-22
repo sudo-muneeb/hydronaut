@@ -14,6 +14,13 @@ public:
     void          draw(sf::RenderWindow& window) const noexcept;
     sf::FloatRect getBounds()                   const noexcept;
 
+    // ─── Memento API ──────────────────────────────────────────────────────
+    struct Snapshot {
+        sf::Vector2f pos;
+    };
+    Snapshot saveState() const;
+    void     restoreState(const Snapshot& snap);
+
 private:
     sf::Sprite m_sprite;
 };

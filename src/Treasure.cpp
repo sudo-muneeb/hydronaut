@@ -46,3 +46,12 @@ void Treasure::draw(sf::RenderWindow& window) const noexcept {
 sf::FloatRect Treasure::getBounds() const noexcept {
     return m_sprite.getGlobalBounds();
 }
+
+// ─── Memento API ────────────────────────────────────────────────────────────
+Treasure::Snapshot Treasure::saveState() const {
+    return { m_sprite.getPosition() };
+}
+
+void Treasure::restoreState(const Snapshot& snap) {
+    m_sprite.setPosition(snap.pos);
+}

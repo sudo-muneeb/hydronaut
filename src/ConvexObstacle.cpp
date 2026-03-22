@@ -142,3 +142,38 @@ void ConvexObstaclePool::spawnOne(sf::Vector2u windowSize) {
     obs.setSpeed(m_speed);
     m_obstacles.emplace_back(std::move(obs));
 }
+
+// ─── Memento Pattern API ────────────────────────────────────────────────────
+ConvexObstacle::Snapshot ConvexObstacle::saveState() const {
+    return { m_x, m_y, m_speed, m_rotation };
+}
+
+void ConvexObstacle::restoreState(const Snapshot& snap, sf::Vector2u windowSize) {
+    m_x        = snap.x;
+    m_y        = snap.y;
+    m_speed    = snap.speed;
+    m_rotation = snap.rotation;
+    m_shape.setPosition(m_x, m_y);
+    m_shape.setRotation(m_rotation);
+}
+
+ConvexObstaclePool::Snapshot ConvexObstaclePool::saveState() const {
+    Snapshot snap;
+    snap.speed = m_speed;
+    snap.obstacles.reserve(m_obstacles.size());
+    for (const auto& obs : m_obstacles) {
+        snap.obstacles.push_back(obs.saveState());
+    }
+    return snap;
+}
+
+void ConvexObstaclePool::restoreState(const Snapshot& snap, sf::Vector2u windowSize) {
+    m_speed = snap.speed;
+    m_obstacles.clear();
+    m_obstacles.reserve(snap.obstacles.size());
+    for (const auto& oSnap : snap.obstacles) {
+        ConvexObstacle obs(windowSize);
+        obs.restoreState(oSnap, windowSize);
+        m_obstacles.push_back(std::move(obs));
+    }
+}

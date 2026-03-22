@@ -2,10 +2,18 @@
 #include <SFML/Graphics.hpp>
 #include <string>
 #include <vector>
+#include <functional>
+#include <memory>
+#include "Command.hpp"
+#include "CommandQueue.hpp"
+#include "EventBus.hpp"
+#include "GameObservers.hpp"
+#include "RewardStrategy.hpp"
+#include "SimulationMemento.hpp"
 
-class Player;  // forward-decl for applyAction helper
+class HydronautEntity; // new entity name
 
-// ─── Abstract Level base ──────────────────────────────────────────────────────
+// ─── Abstract SimulationEnvironment base ──────────────────────────────────────────────────────
 // Provides the shared game loop, HUD, blue gradient background, pause/resume,
 // screen shake, sonar pulse (X key), graze HUD, hit-stop, and debug overlay.
 //
@@ -18,14 +26,20 @@ class Player;  // forward-decl for applyAction helper
 //   std::vector<float> getState()  — 12-element normalised observation
 //   std::vector<float> reset(sf::Vector2u)  — reset episode, return first obs
 //   std::vector<float> step(int action, float& reward, bool& done)
-class Level {
+class SimulationEnvironment : public ICommandTarget {
 public:
-    explicit Level(sf::RenderWindow& window);
-    virtual ~Level() = default;
+    explicit SimulationEnvironment(sf::RenderWindow& window);
+    virtual ~SimulationEnvironment() = default;
 
     // ─── Normal gameplay loop ─────────────────────────────────────────────
     // Runs until game-over or Escape. Returns final score.
     int run();
+
+    // ─── ICommandTarget Implementation ────────────────────────────────────
+    void move(int baseDir) override;
+    void dash() override;
+    void triggerSonar() override;
+    void idle() override;
 
     // ─── RL training API ──────────────────────────────────────────────────
     void setTrainingMode(bool val) noexcept { m_trainingMode = val; }
@@ -35,11 +49,16 @@ public:
     virtual std::vector<float> reset(sf::Vector2u windowSize)                     = 0;
     virtual std::vector<float> step(int action, float& reward, bool& isDone)      = 0;
 
+    // ─── Memento Pattern (Episodic Reset API) ─────────────────────────────
+    virtual std::unique_ptr<SimulationMemento> create_memento() const = 0;
+    virtual void restore_memento(const SimulationMemento& memento) = 0;
+
     // Convenience: window size used by headless training loop
     sf::Vector2u getWindowSize() const noexcept { return m_window.getSize(); }
 
     // Access to player for HUD rendering of abilities
-    virtual const Player& getPlayer() const = 0;
+    virtual const HydronautEntity& getPlayer() const = 0;
+    virtual HydronautEntity&       getPlayer()       = 0;
 
     // ─── Inference rendering ──────────────────────────────────────────────
     // Render one visual frame: background → shake → level sprites → HUD.
@@ -60,8 +79,19 @@ protected:
 
     // ─── RL helper ────────────────────────────────────────────────────────
     // Translate discrete action (0=Up,1=Down,2=Left,3=Right) into a velocity
-    // impulse applied directly to the Player (bypasses keyboard polling).
-    float applyAction(Player& player, int action) noexcept;
+    // impulse applied directly to the HydronautEntity (bypasses keyboard polling).
+    float applyAction(HydronautEntity& entity, int action) noexcept;
+
+    // ─── Event Bus access for derived classes ─────────────────────────────
+    EventBus& getEventBus() noexcept { return m_bus; }
+
+    // ─── RewardStrategy injection (Strategy Pattern) ───────────────────────
+    // Derived levels call this in their constructors to install a strategy.
+    // After injection, step() must produce an EnvironmentContext and invoke
+    // m_rewardStrategy->calculateReward(ctx) — no reward conditionals in SimulationEnvironment.
+    void setRewardStrategy(std::unique_ptr<IRewardStrategy> strategy) {
+        m_rewardStrategy = std::move(strategy);
+    }
 
     // ─── Shared helpers for subclasses ────────────────────────────────────
     void drawBackground();
@@ -84,6 +114,29 @@ protected:
     // Derived classes use this to populate the state vector at s[48].
     bool isSonarReady() const noexcept;
 
+public:
+    // ─── Base State Memento ───────────────────────────────────────────────
+    struct BaseSnapshot {
+        int   stepsSinceReward;
+        float lastReward;
+        int   idleFrames;
+        bool  paused;
+        bool  gameOver;
+        int   score;
+        int   grazeAcc;
+        int   shakeFrames;
+        float shakeIntensity;
+        bool  sonarActive;
+        float sonarRadius;
+        sf::Vector2f sonarCenter;
+        bool  sonarFired;
+        float sonarClockSec;
+        float sonarCooldownClockSec;
+    };
+protected:
+    BaseSnapshot saveBaseState() const;
+    void         restoreBaseState(const BaseSnapshot& snap);
+
     // Graze — call from update(). Returns 1 if graze, 0 otherwise.
     // Does NOT fire if playerCore intersects obstacleBox (that's a lethal hit).
     int checkGraze(sf::FloatRect playerGraze,
@@ -98,6 +151,9 @@ protected:
     int   m_stepsSinceReward = 0;   // frames elapsed since last non-zero reward
     float m_lastReward       = 0.f; // reward value from the most recent step
     int   m_idleFrames       = 0;   // frames elapsed since last moving >= 0.5f
+
+    // ─── Strategy Pattern: RewardStrategy (protected so derived step() can call it)
+    std::unique_ptr<IRewardStrategy> m_rewardStrategy;
 
     sf::RenderWindow& m_window;
     bool              m_paused      = false;
@@ -144,4 +200,18 @@ private:
     int       m_frameMeasurementCount = 0;
     float     m_currentFps   = 0.f;
     float     m_logicTimeMs  = 0.f;
+
+    // ─── Telemetry Queue ──────────────────────────────────────────────────
+    CommandQueue m_cmdQueue{"telemetry.log"};
+
+    // ─── Event Bus & Observer Wiring ────────────────────────────────────────
+    // All observers are stored as members so they live for the SimulationEnvironment's lifetime.
+    EventBus    m_bus;
+    // Initialised in SimulationEnvironment constructor (after m_score / m_grazeAcc / m_lastReward
+    // members are defined), so they are declared here as optional pointers and
+    // constructed in SimulationEnvironment.cpp. Using unique_ptr so we can init after construction.
+    std::unique_ptr<ScoreObserver>     m_scoreObs;
+    std::unique_ptr<RewardObserver>    m_rewardObs;
+    std::unique_ptr<ShakeObserver>     m_shakeObs;
+    std::unique_ptr<TelemetryObserver> m_telemetryObs;
 };

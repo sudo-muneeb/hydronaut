@@ -57,3 +57,15 @@ void ExpSineObstacle::draw(sf::RenderWindow& window) const noexcept {
 sf::FloatRect ExpSineObstacle::getBounds() const noexcept {
     return m_sprite.getGlobalBounds();
 }
+
+// ─── Memento API ────────────────────────────────────────────────────────────
+ExpSineObstacle::Snapshot ExpSineObstacle::saveState() const {
+    return { m_x, m_speedMult, m_lastVel };
+}
+
+void ExpSineObstacle::restoreState(const Snapshot& snap, sf::Vector2u windowSize) {
+    m_x         = snap.x;
+    m_speedMult = snap.speedMult;
+    m_lastVel   = snap.lastVel;
+    m_sprite.setPosition(m_x, expSineY(m_x, windowSize));
+}
